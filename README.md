@@ -2,7 +2,7 @@
 
 **Turn your site’s listings page into a Facebook Marketplace–ready Excel file and image bundle.** This Laravel app helps sellers and small businesses that keep **products or other items** on their own website and want to **bulk upload to Facebook Marketplace** without retyping every title, price, and photo.
 
-If you found this repo while searching for *Facebook Marketplace bulk upload spreadsheet*, *inventory export to Excel*, or *bulk listing automation*, you are in the right place: the export format is designed around Meta’s bulk upload workbook (see `storage/Facebook Bulk Upload Template.xlsx` and [`SPEC.md`](SPEC.md)).
+If you found this repo while searching for *Facebook Marketplace bulk upload spreadsheet*, *inventory export to Excel*, or *bulk listing automation*, you are in the right place: the export format is designed around Meta’s bulk upload workbook (see `storage/Facebook Bulk Upload Template.xlsx` and [`SPEC.MD`](SPEC.MD)).
 
 Example: turn the listings on https://www.fortwaynetoyota.com/searchused.aspx into a spreadsheet that can be uploaded to facebook marketplace.
 
@@ -19,12 +19,12 @@ Facebook Marketplace supports **bulk listings** using a spreadsheet plus images�
 At a high level:
 
 1. Accept a URL to your **product / inventory listings page**.
-2. Fetch and parse listings (with queued jobs for heavier work—see `spec.md`).
+2. Fetch and parse listings (with queued jobs for heavier work—see `SPEC.MD`).
 3. Fill a workbook that follows the **Facebook bulk upload template** shipped in this repo.
 4. Package **images grouped by listing** (folder names tied to listing titles).
-5. Deliver a **time-limited download link** (as specified in `spec.md`).
+5. Deliver a **time-limited download link** (as specified in `SPEC.MD`).
 
-Implementation details, row limits, and zip layout are documented in [`spec.md`](spec.md).
+Implementation details, row limits, and zip layout are documented in [`SPEC.MD`](SPEC.MD).
 
 ---
 
@@ -69,7 +69,7 @@ This is a standard Laravel application. You can run it anywhere that supports PH
 | **Web server** | Nginx or Apache pointing `public/` as the document root; or a managed Laravel host ([Laravel Forge](https://forge.laravel.com), [Laravel Cloud](https://cloud.laravel.com), [Vapor](https://vapor.laravel.com), PaaS with PHP buildpacks). |
 | **Environment** | Copy `.env.example` to `.env` on the server; set `APP_ENV=production`, `APP_DEBUG=false`, strong `APP_KEY`, and `APP_URL`. |
 | **Database** | Configure `DB_*` (SQLite is fine for small setups; MySQL/PostgreSQL for production). Run `php artisan migrate`. |
-| **Queues** | Listing export is expected to use **queues** (`php artisan queue:work` under Supervisor or your host’s worker system). See [`spec.md`](spec.md). |
+| **Queues** | Listing export is expected to use **queues** (`php artisan queue:work` under Supervisor or your host’s worker system). See [`SPEC.MD`](SPEC.MD). |
 | **Scheduler** | If you add expiry/cleanup commands, register `* * * * * php artisan schedule:run` in cron. |
 | **Storage** | Exports use Laravel’s default Storage disk (`FILESYSTEM_DISK` / `config/filesystems.php`). Use the **`s3`** disk plus `AWS_*` / `AWS_BUCKET` when you need shared or remote object storage. |
 | **Assets** | Build on deploy: `npm ci && npm run build`; ensure `public/build` exists or your host runs Vite build. |
@@ -86,7 +86,7 @@ If you want this application **deployed, customized, or integrated** with your i
 
 ## Documentation
 
-- **[`spec.md`](spec.md)** — Product specification: flows, zip layout, spreadsheet rules, security, and testing notes.
+- **[`SPEC.MD`](SPEC.MD)** — Product specification: flows, zip layout, spreadsheet rules, security, and testing notes.
 
 ---
 

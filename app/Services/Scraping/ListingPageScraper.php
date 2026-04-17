@@ -19,11 +19,8 @@ class ListingPageScraper
      */
     public function scrape(string $url): array
     {
-        $response = Http::withHeaders([
-            'User-Agent' => (string) config('facebook_marketplace.http_user_agent'),
-            'Accept' => 'text/html,application/xhtml+xml',
-        ])
-            ->timeout((int) config('facebook_marketplace.scraper_timeout_seconds'))
+        $response = Http::timeout((int) config('facebook_marketplace.scraper_timeout_seconds'))
+            ->withOptions(['allow_redirects' => true])
             ->get($url);
 
         if (! $response->successful()) {

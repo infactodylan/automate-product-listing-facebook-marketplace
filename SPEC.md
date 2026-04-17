@@ -12,7 +12,7 @@ Users submit a URL to their **product listings page**. The application:
 
 1. Visits that page (and follows pagination or listing index patterns as needed).
 2. Extracts a normalized list of products (title, price, description, and image URLs at minimum).
-3. Produces **one Excel workbook** compatible with Facebook Marketplace bulk listing expectations (exact column headers must be verified against Meta’s current template during implementation).
+3. Produces **one Excel workbook** that follows the same structure as **`storage/Facebook Bulk Upload Template.xlsx`** (see “Spreadsheet” below). The implementation must load that file (or a path from `FACEBOOK_BULK_UPLOAD_TEMPLATE_PATH`) and only populate data cells—never hand-roll a new workbook layout for export.
 4. Downloads remote product images and packages them into a **zip archive** structured so users can match images to spreadsheet rows quickly.
 5. Delivers everything through a **single secret link** that expires after **7 days**.
 
@@ -76,11 +76,32 @@ listings.xlsx
 - Filename pattern `01.jpg`, `02.webp`, etc., preserving extension when possible.
 - Skip broken downloads with a warning row in an optional `manifest.json` at zip root (recommended) listing `product_title`, `image_url`, `status`, `error`.
 
-### Spreadsheet
+### Spreadsheet (Facebook Bulk Upload Template)
 
-- Minimum columns for Facebook Marketplace bulk workflows typically include identifiers for listing data and image references; **validate the official Meta template** (CSV/XLSX) at build time and map columns explicitly in code (do not guess column names long-term).
-- Include a stable **internal row id** column (UUID or incremental id) if Facebook allows extra columns to be ignored, to correlate rows with folders during debugging.
-- Store price as number + currency code columns if the template requires it.
+The canonical reference file is **`storage/Facebook Bulk Upload Template.xlsx`**. Laravel config **`config/facebook_marketplace.php`** exposes `bulk_upload_template_path` (override with env **`FACEBOOK_BULK_UPLOAD_TEMPLATE_PATH`** when Meta ships a newer file).
+
+**Rules**
+
+1. **Generate exports by cloning this workbook** (PhpSpreadsheet: load template → write listing rows → save). Preserves the hidden **`VALIDATION`** sheet, data validation dropdowns, and formatting expected by Marketplace.
+2. **Sheet name** visible to the user: **`Bulk Upload Template`** — do not rename.
+3. **Fixed header block (do not overwrite with listing data)**  
+   - Row 1: title row (`Facebook Marketplace Bulk Upload Template`).  
+   - Row 2: instruction row (50 listings max per upload).  
+   - Row 3: per-column requirement hints (REQUIRED / OPTIONAL).  
+   - Row 4: column headers (**A–E**):  
+     **`TITLE`** | **`PRICE`** | **`CONDITION`** | **`DESCRIPTION`** | **`CATEGORY`**
+4. **Data rows** start at **row 5**. Each inventory row maps one listing to columns **A–E** only. Do **not** add extra columns unless Meta’s template changes and this file is updated accordingly (extra columns can break bulk import).
+5. **Limits (from template copy)**  
+   - **TITLE**: plain text, **up to 150 characters**.  
+   - **PRICE**: whole number **in USD ($)** as the template expects (example row uses numeric `20` for price).  
+   - **CONDITION**: must be exactly one of: **`New`**, **`Used - Like New`**, **`Used - Good`**, **`Used - Fair`**. Map scraped condition strings to the nearest allowed value or default with a clear rule (document in code).  
+   - **DESCRIPTION**: plain text, **up to 5000 characters**.  
+   - **CATEGORY**: template row 3 marks this column **OPTIONAL**, but values must match the template’s taxonomy when provided (examples use **`Parent//Child//Leaf`** separated by **`//`**). Populate from scraped data only when mapped to an allowed **`VALIDATION`** dropdown value.
+6. **Batch size**: template text states **up to 50 listings at once**. Cap each generated file at **50 data rows** (rows 5–54). If inventory exceeds 50, split into multiple exports (multiple jobs/zips or sequentially numbered files—product decision).
+
+**Zip filename**: The delivered file may remain **`listings.xlsx`** inside the zip or use the same base layout as the template; the **internal workbook structure** must still match this template.
+
+**Regression check**: When Meta updates the official template, replace **`storage/Facebook Bulk Upload Template.xlsx`**, adjust mappings if columns change, and add a snapshot test that row 4 headers and sheet names still match expectations after loading with PhpSpreadsheet.
 
 ---
 
@@ -123,7 +144,7 @@ Use `failed_jobs` visibility and retries with backoff for flaky hosts.
 
 ### Excel generation
 
-- Use `phpoffice/phpspreadsheet` or equivalent; write `.xlsx` with one row per product.
+- Use **`phpoffice/phpspreadsheet`** (or equivalent). **Load `bulk_upload_template_path` from config**, fill rows starting at **row 5** on **`Bulk Upload Template`**, then save. Do not create a blank workbook with ad hoc headers.
 
 ---
 
@@ -140,6 +161,7 @@ Use `failed_jobs` visibility and retries with backoff for flaky hosts.
 Environment variables (suggested):
 
 - `EXPORT_LINK_TTL_DAYS=7`
+- `FACEBOOK_BULK_UPLOAD_TEMPLATE_PATH=` (optional absolute path to Meta’s XLSX if not using `storage/Facebook Bulk Upload Template.xlsx`)
 - `HTTP_USER_AGENT=` (service identifier)
 - `SCRAPER_TIMEOUT_SECONDS=`
 - `MAX_LISTINGS_PER_JOB=` (cost control)
@@ -158,6 +180,7 @@ Environment variables (suggested):
 ## Testing checklist
 
 - Unit tests for title → folder sanitization and collision handling.
+- Assert `config('facebook_marketplace.bulk_upload_template_path')` exists on disk in CI (the committed template file).
 - Feature tests for signed URL expiry and 410 after `expires_at`.
 - Job tests with recorded HTTP fixtures (do not hit live sites in CI).
 

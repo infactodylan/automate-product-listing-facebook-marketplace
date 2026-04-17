@@ -1,14 +1,14 @@
-# Car Listing Spreadsheet Creator
+# Marketplace listing spreadsheet export
 
-**Turn your vehicle inventory page into a Facebook Marketplace–ready Excel file and image bundle.** This Laravel app is for dealers and sellers who list cars (or other inventory) on their own website and want to **bulk upload to Facebook Marketplace** without retyping every title, price, and photo.
+**Turn your site’s listings page into a Facebook Marketplace–ready Excel file and image bundle.** This Laravel app helps sellers and small businesses that keep **products or other items** on their own website and want to **bulk upload to Facebook Marketplace** without retyping every title, price, and photo.
 
-If you found this repo while searching for *Facebook Marketplace bulk upload spreadsheet*, *inventory export to Excel*, or *car dealer listing automation*, you are in the right place: the export format is designed around Meta’s bulk upload workbook (see `storage/Facebook Bulk Upload Template.xlsx` and [`spec.md`](spec.md)).
+If you found this repo while searching for *Facebook Marketplace bulk upload spreadsheet*, *inventory export to Excel*, or *bulk listing automation*, you are in the right place: the export format is designed around Meta’s bulk upload workbook (see `storage/Facebook Bulk Upload Template.xlsx` and [`spec.md`](spec.md)).
 
 ---
 
 ## The problem
 
-Facebook Marketplace supports **bulk listings** using a spreadsheet plus images—but your inventory often lives on **your website**, not in a spreadsheet. Copying dozens or hundreds of vehicles into Meta’s template by hand is slow and error-prone. This application is meant to **visit your listings URL**, normalize what it finds, and produce a **downloadable zip**: an `.xlsx` aligned with Meta’s template and **folders of images per listing** so you can attach the right photos when you upload.
+Facebook Marketplace supports **bulk listings** using a spreadsheet plus images—but your items often live on **your website**, not in a spreadsheet. Copying dozens or hundreds of listings into Meta’s template by hand is slow and error-prone. This application is meant to **visit your listings URL**, normalize what it finds, and produce a **downloadable zip**: an `.xlsx` aligned with Meta’s template and **folders of images per listing** so you can attach the right photos when you upload.
 
 ---
 
@@ -69,7 +69,7 @@ This is a standard Laravel application. You can run it anywhere that supports PH
 | **Database** | Configure `DB_*` (SQLite is fine for small setups; MySQL/PostgreSQL for production). Run `php artisan migrate`. |
 | **Queues** | Listing export is expected to use **queues** (`php artisan queue:work` under Supervisor or your host’s worker system). See [`spec.md`](spec.md). |
 | **Scheduler** | If you add expiry/cleanup commands, register `* * * * * php artisan schedule:run` in cron. |
-| **Storage** | Default `local` disk under `storage/app`; for multi-server or large zips, use **S3** (or compatible) via Laravel’s `s3` disk and env vars `AWS_*` / `AWS_BUCKET`. |
+| **Storage** | Exports use Laravel’s default Storage disk (`FILESYSTEM_DISK` / `config/filesystems.php`). Use the **`s3`** disk plus `AWS_*` / `AWS_BUCKET` when you need shared or remote object storage. |
 | **Assets** | Build on deploy: `npm ci && npm run build`; ensure `public/build` exists or your host runs Vite build. |
 
 For HTTPS, logging, and scaling, follow [Laravel’s deployment documentation](https://laravel.com/docs/deployment).

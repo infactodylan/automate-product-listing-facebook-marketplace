@@ -1,10 +1,10 @@
-# Product specification — Car listing spreadsheet creator
+# Product specification — Marketplace listing spreadsheet export
 
 This document guides implementation of the Laravel + Livewire + DaisyUI application in this repository.
 
 ## Problem
 
-Dealers and sellers maintain inventory on a website. Facebook Marketplace supports bulk workflows using a spreadsheet plus images. Manually copying each listing is slow.
+Sellers and businesses maintain listings on a website. Facebook Marketplace supports bulk workflows using a spreadsheet plus images. Manually copying each listing is slow.
 
 ## Goal
 
@@ -55,11 +55,11 @@ Example:
 
 ```text
 listings.xlsx
-2019 Honda Civic LX/
+Vintage Desk Lamp/
   01.jpg
   02.jpg
   ...
-2020 Toyota Camry LE/
+Blue Ceramic Vase/
   01.jpg
   ...
 ```
@@ -97,7 +97,7 @@ The canonical reference file is **`storage/Facebook Bulk Upload Template.xlsx`**
    - **CONDITION**: must be exactly one of: **`New`**, **`Used - Like New`**, **`Used - Good`**, **`Used - Fair`**. Map scraped condition strings to the nearest allowed value or default with a clear rule (document in code).  
    - **DESCRIPTION**: plain text, **up to 5000 characters**.  
    - **CATEGORY**: template row 3 marks this column **OPTIONAL**, but values must match the template’s taxonomy when provided (examples use **`Parent//Child//Leaf`** separated by **`//`**). Populate from scraped data only when mapped to an allowed **`VALIDATION`** dropdown value.
-6. **Batch size**: template text states **up to 50 listings at once**. Cap each generated file at **50 data rows** (rows 5–54). If inventory exceeds 50, split into multiple exports (multiple jobs/zips or sequentially numbered files—product decision).
+6. **Batch size**: template text states **up to 50 listings at once**. Cap each generated workbook at **50 data rows** (rows 5–54). If inventory exceeds 50, split into multiple workbooks placed in the **same zip**, named `listings-part-01.xlsx`, `listings-part-02.xlsx`, … (single-listing batches still use the canonical **`listings.xlsx`**).
 
 **Zip filename**: The delivered file may remain **`listings.xlsx`** inside the zip or use the same base layout as the template; the **internal workbook structure** must still match this template.
 
@@ -132,7 +132,7 @@ Use `failed_jobs` visibility and retries with backoff for flaky hosts.
 
 ### Storage
 
-- **Private disk** (`storage/app/private/exports/...`) for zips and temp image dirs.
+- **Default Storage disk** (`FILESYSTEM_DISK` / `config/filesystems.default`) for zips and workspace paths under `exports/...`.
 - Serve downloads via **signed routes** (`URL::temporarySignedRoute`) or streamed controller that checks expiry and logs access.
 - Scheduled task to **delete** exports and temp dirs after expiry plus a safety buffer (for example purge at day 8).
 
@@ -165,7 +165,9 @@ Environment variables (suggested):
 - `HTTP_USER_AGENT=` (service identifier)
 - `SCRAPER_TIMEOUT_SECONDS=`
 - `MAX_LISTINGS_PER_JOB=` (cost control)
-
+- `MAX_TOTAL_IMAGE_BYTES=` (combined downloaded image bytes budget per export)
+- `EXPORT_CREATE_RATE_PER_MINUTE=` / `EXPORT_DOWNLOAD_RATE_PER_MINUTE=` (per-IP Laravel rate limits)
+- `EXPORT_PURGE_BUFFER_HOURS=` (scheduled deletion buffer after advertised expiry)
 ---
 
 ## Security and abuse prevention
@@ -181,8 +183,40 @@ Environment variables (suggested):
 
 - Unit tests for title → folder sanitization and collision handling.
 - Assert `config('facebook_marketplace.bulk_upload_template_path')` exists on disk in CI (the committed template file).
-- Feature tests for signed URL expiry and 410 after `expires_at`.
+- Feature tests for delivery URL expiry (**410**) after `expires_at` plus end-to-end job fixtures (no live scraping in CI).
 - Job tests with recorded HTTP fixtures (do not hit live sites in CI).
+
+---
+
+## Implementation mapping (this repository)
+
+This section tracks how the specification above maps to shipped code paths (keep it accurate as behavior evolves).
+
+### Delivery links
+
+Delivery links expire **7 days after the export succeeds** (`ListingExport::$expires_at` set at the end of `BuildExportJob`). Unguessable tokens are **64 hex characters** (`random_bytes(32)`), persisted only as `hash('sha256', token)` (`ListingExport::$delivery_token_hash`). Downloads validate the raw token against that hash and enforce both `expires_at` and filesystem presence.
+
+### Routing + UI
+
+- **`/`**: Livewire `App\Livewire\HomePage` — submits a listings URL, runs chained jobs (sync during tests; queue workers in production), polls progress, then shows copy/open for `/d/{token}`.
+- **`/d/{token}`**: Livewire `App\Livewire\ExportDelivery` — explains contents and links to download (HTTP **410** after expiry via `abort(410)`).
+- **`/d/{token}/download`**: streams the zip after the same expiry + readiness checks (`ExportDownloadController`).
+
+### Pipeline
+
+Jobs are dispatched in order using `Bus::chain`:
+
+1. **`FetchListingIndexJob`** discovers candidate listing URLs (`ListingIndexExtractor`) and saves them on the export row.
+2. **`ScrapeListingJob`** scrapes JSON-LD `Product` / Open Graph fallbacks (`ListingPageScraper`) into `scraped_products`.
+3. **`BuildExportJob`** loads Meta’s workbook template (`FacebookBulkUploadWriter`), downloads listing images under per-title folders (`MarketplaceExportPackageBuilder`), and writes `exports/{storage_key}/export.zip` on Laravel’s **default Storage disk** (`FILESYSTEM_DISK`).
+
+Pagination / infinite-scroll indexes are **not fully implemented** yet; unsupported layouts may require later Playwright-backed rendering (`SCRAPER_RENDER_MODE`-style flag is still future work).
+
+### Abuse controls + housekeeping
+
+Exports are rate-limited via `EXPORT_CREATE_RATE_PER_MINUTE` / `EXPORT_DOWNLOAD_RATE_PER_MINUTE` middleware aliases (`create-export`, `download-export`). SSRF defenses live in `UrlSafetyValidator`.
+
+Expired artifacts are deleted by `exports:purge-expired` (`EXPORT_PURGE_BUFFER_HOURS`, default **24**) scheduled daily from `routes/console.php` bootstrap wiring.
 
 ---
 

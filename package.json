@@ -1,5 +1,6 @@
 {
     "$schema": "https://www.schemastore.org/package.json",
+    "name": "automate-product-listing-facebook-marketplace",
     "private": true,
     "type": "module",
     "engines": {

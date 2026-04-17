@@ -1,0 +1,118 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Jobs\BuildExportJob;
+use App\Jobs\FetchListingIndexJob;
+use App\Jobs\ScrapeListingJob;
+use App\Models\ListingExport;
+use App\Services\FacebookMarketplace\MarketplaceExportPackageBuilder;
+use App\Services\Scraping\ListingIndexExtractor;
+use App\Services\Scraping\ListingPageScraper;
+use App\Services\UrlSafetyValidator;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
+use Tests\TestCase;
+
+class ListingExportFlowTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_it_builds_an_export_end_to_end_with_http_fixtures(): void
+    {
+        Storage::fake();
+
+        $indexHtml = <<<'HTML'
+            <html><body>
+                <a href="/listings/2019-honda-civic">Vehicle</a>
+            </body></html>
+        HTML;
+
+        $listingHtml = <<<'HTML'
+            <html><head>
+                <script type="application/ld+json">
+                {
+                    "@type": "Product",
+                    "name": "2019 Honda Civic LX",
+                    "description": "Low miles",
+                    "image": "https://example.com/photo.jpg",
+                    "offers": { "@type": "Offer", "price": "12995", "priceCurrency": "USD" }
+                }
+                </script>
+            </head><body></body></html>
+        HTML;
+
+        Http::fake([
+            'example.com/inventory' => Http::response($indexHtml, 200),
+            'example.com/listings/*' => Http::response($listingHtml, 200),
+            'example.com/photo.jpg' => Http::response(str_repeat('x', 32), 200, ['Content-Type' => 'image/jpeg']),
+        ]);
+
+        $token = bin2hex(random_bytes(32));
+
+        $export = ListingExport::query()->create([
+            'storage_key' => '00000000-0000-4000-8000-000000000001',
+            'delivery_token_hash' => hash('sha256', $token),
+            'listing_page_url' => 'https://example.com/inventory',
+            'status' => ListingExport::STATUS_QUEUED,
+        ]);
+
+        (new FetchListingIndexJob($export->id))->handle(
+            app(UrlSafetyValidator::class),
+            app(ListingIndexExtractor::class),
+        );
+
+        (new ScrapeListingJob($export->id))->handle(
+            app(ListingPageScraper::class),
+        );
+
+        (new BuildExportJob($export->id))->handle(
+            app(MarketplaceExportPackageBuilder::class),
+        );
+
+        $export->refresh();
+
+        $this->assertSame(ListingExport::STATUS_READY, $export->status);
+        $this->assertNotNull($export->zip_relative_path);
+        Storage::assertExists($export->zip_relative_path);
+
+        $this->get('/d/'.$token)
+            ->assertOk()
+            ->assertSee('Download zip', false);
+
+        $this->get('/d/'.$token.'/download')
+            ->assertOk();
+    }
+
+    public function test_download_returns_410_after_expiry(): void
+    {
+        Storage::fake();
+
+        $token = bin2hex(random_bytes(32));
+
+        $storageKey = '00000000-0000-4000-8000-000000000002';
+
+        $export = ListingExport::query()->create([
+            'storage_key' => $storageKey,
+            'delivery_token_hash' => hash('sha256', $token),
+            'listing_page_url' => 'https://example.com/inventory',
+            'status' => ListingExport::STATUS_READY,
+            'expires_at' => now()->subMinute(),
+            'zip_relative_path' => 'exports/'.$storageKey.'/export.zip',
+        ]);
+
+        Storage::put($export->zip_relative_path, 'zip-bytes');
+
+        $this->get('/d/'.$token)->assertStatus(410);
+        $this->get('/d/'.$token.'/download')->assertStatus(410);
+    }
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config(['facebook_marketplace.max_listings_per_job' => 25]);
+        config(['facebook_marketplace.max_total_image_bytes' => 1024 * 1024]);
+    }
+}

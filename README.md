@@ -2,7 +2,9 @@
 
 **Turn your site’s listings page into a Facebook Marketplace–ready Excel file and image bundle.** This Laravel app helps sellers and small businesses that keep **products or other items** on their own website and want to **bulk upload to Facebook Marketplace** without retyping every title, price, and photo.
 
-If you found this repo while searching for *Facebook Marketplace bulk upload spreadsheet*, *inventory export to Excel*, or *bulk listing automation*, you are in the right place: the export format is designed around Meta’s bulk upload workbook (see `storage/Facebook Bulk Upload Template.xlsx` and [`spec.md`](spec.md)).
+If you found this repo while searching for *Facebook Marketplace bulk upload spreadsheet*, *inventory export to Excel*, or *bulk listing automation*, you are in the right place: the export format is designed around Meta’s bulk upload workbook (see `storage/Facebook Bulk Upload Template.xlsx` and [`SPEC.md`](SPEC.md)).
+
+Example: turn the listings on https://www.fortwaynetoyota.com/searchused.aspx into a spreadsheet that can be uploaded to facebook marketplace.
 
 ---
 

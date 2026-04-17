@@ -1,58 +1,93 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Car Listing Spreadsheet Creator
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+**Turn your vehicle inventory page into a Facebook Marketplace–ready Excel file and image bundle.** This Laravel app is for dealers and sellers who list cars (or other inventory) on their own website and want to **bulk upload to Facebook Marketplace** without retyping every title, price, and photo.
 
-## About Laravel
+If you found this repo while searching for *Facebook Marketplace bulk upload spreadsheet*, *inventory export to Excel*, or *car dealer listing automation*, you are in the right place: the export format is designed around Meta’s bulk upload workbook (see `storage/Facebook Bulk Upload Template.xlsx` and [`spec.md`](spec.md)).
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+---
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## The problem
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+Facebook Marketplace supports **bulk listings** using a spreadsheet plus images—but your inventory often lives on **your website**, not in a spreadsheet. Copying dozens or hundreds of vehicles into Meta’s template by hand is slow and error-prone. This application is meant to **visit your listings URL**, normalize what it finds, and produce a **downloadable zip**: an `.xlsx` aligned with Meta’s template and **folders of images per listing** so you can attach the right photos when you upload.
 
-## Learning Laravel
+---
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+## What this project does (goal)
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+At a high level:
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+1. Accept a URL to your **product / inventory listings page**.
+2. Fetch and parse listings (with queued jobs for heavier work—see `spec.md`).
+3. Fill a workbook that follows the **Facebook bulk upload template** shipped in this repo.
+4. Package **images grouped by listing** (folder names tied to listing titles).
+5. Deliver a **time-limited download link** (as specified in `spec.md`).
 
-## Agentic Development
+Implementation details, row limits, and zip layout are documented in [`spec.md`](spec.md).
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+---
+
+## Tech stack
+
+- **Laravel** (PHP) with **Livewire** and **DaisyUI** / Tailwind for the UI
+- **Excel**: PhpSpreadsheet (when export logic is implemented), based on `storage/Facebook Bulk Upload Template.xlsx`
+- **Optional object storage**: `league/flysystem-aws-s3-v3` for S3-compatible disks (exports, assets, or backups—wire in `config/filesystems.php` as needed)
+
+---
+
+## Local development
+
+Requirements:
+
+- PHP **8.3+** and [Composer](https://getcomposer.org/)
+- Node.js **20.19+** or **22.12+** (required by Vite 8) and npm
 
 ```bash
-composer require laravel/boost --dev
+cp .env.example .env
+composer install
+php artisan key:generate
 
-php artisan boost:install
+# JavaScript toolchain (use a supported Node version; nvm/fnm recommended)
+npm install
+npm run build   # or `npm run dev` while developing
+
+php artisan migrate
+php artisan serve
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+Open the URL shown by `artisan serve` (typically `http://127.0.0.1:8000`).
 
-## Contributing
+---
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## Hosting and production
 
-## Code of Conduct
+This is a standard Laravel application. You can run it anywhere that supports PHP 8.3+, a web server, and persistent storage:
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+| Concern | Notes |
+|--------|--------|
+| **Web server** | Nginx or Apache pointing `public/` as the document root; or a managed Laravel host ([Laravel Forge](https://forge.laravel.com), [Laravel Cloud](https://cloud.laravel.com), [Vapor](https://vapor.laravel.com), PaaS with PHP buildpacks). |
+| **Environment** | Copy `.env.example` to `.env` on the server; set `APP_ENV=production`, `APP_DEBUG=false`, strong `APP_KEY`, and `APP_URL`. |
+| **Database** | Configure `DB_*` (SQLite is fine for small setups; MySQL/PostgreSQL for production). Run `php artisan migrate`. |
+| **Queues** | Listing export is expected to use **queues** (`php artisan queue:work` under Supervisor or your host’s worker system). See [`spec.md`](spec.md). |
+| **Scheduler** | If you add expiry/cleanup commands, register `* * * * * php artisan schedule:run` in cron. |
+| **Storage** | Default `local` disk under `storage/app`; for multi-server or large zips, use **S3** (or compatible) via Laravel’s `s3` disk and env vars `AWS_*` / `AWS_BUCKET`. |
+| **Assets** | Build on deploy: `npm ci && npm run build`; ensure `public/build` exists or your host runs Vite build. |
 
-## Security Vulnerabilities
+For HTTPS, logging, and scaling, follow [Laravel’s deployment documentation](https://laravel.com/docs/deployment).
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+---
+
+## Need help setting this up?
+
+If you want this application **deployed, customized, or integrated** with your inventory site and workflows, **[Infacto Digital](https://infacto.digital)** can help with implementation, hosting strategy, queues, storage, and ongoing support.
+
+---
+
+## Documentation
+
+- **[`spec.md`](spec.md)** — Product specification: flows, zip layout, spreadsheet rules, security, and testing notes.
+
+---
 
 ## License
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+The Laravel framework is open source under the MIT license. Add a `LICENSE` file at the repo root when you finalize terms for this project.

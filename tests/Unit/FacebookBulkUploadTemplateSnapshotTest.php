@@ -2,30 +2,32 @@
 
 namespace Tests\Unit;
 
-use PhpOffice\PhpSpreadsheet\IOFactory;
 use Tests\TestCase;
 
 class FacebookBulkUploadTemplateSnapshotTest extends TestCase
 {
-    public function test_committed_template_loads_and_matches_expected_layout_contract(): void
+    public function test_committed_template_csv_matches_expected_header_contract(): void
     {
         $path = config('facebook_marketplace.bulk_upload_template_path');
 
         $this->assertIsString($path);
         $this->assertFileExists($path);
 
-        $spreadsheet = IOFactory::load($path);
+        $handle = fopen($path, 'rb');
+        $this->assertNotFalse($handle);
 
-        $this->assertContains('Bulk Upload Template', $spreadsheet->getSheetNames());
-        $this->assertContains('VALIDATION', $spreadsheet->getSheetNames());
+        try {
+            $headers = fgetcsv($handle);
+            $this->assertNotFalse($headers);
+            /** @var list<string> $headers */
+            $headers = array_values(array_map(static fn ($h) => trim((string) $h), $headers));
 
-        $sheet = $spreadsheet->getSheetByName('Bulk Upload Template');
-        $this->assertNotNull($sheet);
-
-        $this->assertSame('TITLE', (string) $sheet->getCell('A4')->getValue());
-        $this->assertSame('PRICE', (string) $sheet->getCell('B4')->getValue());
-        $this->assertSame('CONDITION', (string) $sheet->getCell('C4')->getValue());
-        $this->assertSame('DESCRIPTION', (string) $sheet->getCell('D4')->getValue());
-        $this->assertSame('CATEGORY', (string) $sheet->getCell('E4')->getValue());
+            $this->assertSame(
+                ['TITLE', 'PRICE', 'CONDITION', 'DESCRIPTION', 'CATEGORY'],
+                array_map(static fn ($h) => strtoupper($h), $headers),
+            );
+        } finally {
+            fclose($handle);
+        }
     }
 }

@@ -5,9 +5,7 @@ use App\Livewire\ExportDelivery;
 use App\Livewire\HomePage;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['throttle:create-export'])->group(function () {
-    Route::get('/', HomePage::class);
-});
+Route::get('/', HomePage::class);
 
 Route::get('/d/{token}', ExportDelivery::class)->name('exports.show');
 

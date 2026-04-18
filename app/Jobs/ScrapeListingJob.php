@@ -49,7 +49,11 @@ class ScrapeListingJob implements ShouldQueue
         $products = [];
         foreach ($urls as $listingUrl) {
             try {
-                $products[] = $scraper->scrape($listingUrl);
+                Log::info('Listing scrape job: scraping URL', [
+                    'export_id' => $export->id,
+                    'listing_url' => $listingUrl,
+                ]);
+                $products[] = $scraper->scrape($listingUrl, $export->id);
             } catch (\Throwable $e) {
                 Log::warning('Listing scrape failed', [
                     'export_id' => $export->id,

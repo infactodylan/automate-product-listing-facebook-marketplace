@@ -5,6 +5,54 @@ namespace App\Services\Scraping;
 class ListingIndexExtractor
 {
     /**
+     * @param  list<string>  $absoluteUrls
+     * @return list<string>
+     */
+    public function filterListingUrls(string $indexUrl, array $absoluteUrls, int $maxListings): array
+    {
+        $indexParts = parse_url($indexUrl);
+        if ($indexParts === false || ! isset($indexParts['scheme'], $indexParts['host'])) {
+            return [];
+        }
+
+        $baseHost = strtolower((string) $indexParts['host']);
+
+        $found = [];
+        foreach ($absoluteUrls as $absolute) {
+            if (! is_string($absolute) || $absolute === '') {
+                continue;
+            }
+            $absolute = trim($absolute);
+
+            $p = parse_url($absolute);
+            if ($p === false || ! isset($p['host'], $p['scheme'])) {
+                continue;
+            }
+
+            if (strtolower((string) $p['host']) !== $baseHost) {
+                continue;
+            }
+
+            if (strtolower((string) $p['scheme']) !== 'http' && strtolower((string) $p['scheme']) !== 'https') {
+                continue;
+            }
+
+            if (! $this->looksLikeListingPath((string) ($p['path'] ?? '/'))) {
+                continue;
+            }
+
+            $found[] = $this->stripFragment($absolute);
+        }
+
+        $found = array_values(array_unique($found));
+        if (count($found) > $maxListings) {
+            $found = array_slice($found, 0, $maxListings);
+        }
+
+        return $found;
+    }
+
+    /**
      * @return list<string> Absolute HTTP(S) listing URLs, de-duplicated, stable order.
      */
     public function extractCandidateListingUrls(string $indexUrl, string $html, int $maxListings): array

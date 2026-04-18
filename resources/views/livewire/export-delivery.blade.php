@@ -15,7 +15,7 @@
             <div class="mb-8">
                 <h1 class="text-3xl font-bold tracking-tight">Your Facebook Marketplace export</h1>
                 <p class="mt-2 text-base-content/70">
-                    The zip contains <code class="font-mono text-xs">listings*.xlsx</code> plus one folder per listing title with numbered images.
+                    The zip contains <code class="font-mono text-xs">listings*.csv</code> plus one folder per listing title with numbered images.
                 </p>
             </div>
 

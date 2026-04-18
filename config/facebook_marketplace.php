@@ -10,7 +10,7 @@ return [
 
     'bulk_upload_template_path' => env(
         'FACEBOOK_BULK_UPLOAD_TEMPLATE_PATH',
-        storage_path('Facebook Bulk Upload Template.xlsx'),
+        storage_path('Facebook Bulk Upload Template.csv'),
     ),
 
     /*
@@ -40,7 +40,16 @@ return [
     /** Total bytes for all downloaded listing images per export job (approximate cap). */
     'max_total_image_bytes' => (int) env('MAX_TOTAL_IMAGE_BYTES', 120 * 1024 * 1024),
 
-    /** Meta template supports 50 listings per workbook (rows 5–54). */
+    /** Max images downloaded per listing (0 = no per-listing cap). */
+    'max_images_per_listing' => (int) env('MAX_IMAGES_PER_LISTING', 5),
+
+    /**
+     * Concurrent image HTTP requests per listing (chunk size for Http::pool).
+     * 1 = sequential downloads. Higher values speed up exports when each listing has multiple photos.
+     */
+    'image_download_concurrency' => (int) env('IMAGE_DOWNLOAD_CONCURRENCY', 8),
+
+    /** Meta bulk upload guidance: batch listings (CSV rows after header); cap each file for parity with legacy XLSX limits. */
     'rows_per_workbook' => 50,
 
 ];

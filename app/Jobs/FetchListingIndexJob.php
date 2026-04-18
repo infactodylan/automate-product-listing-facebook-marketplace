@@ -3,14 +3,13 @@
 namespace App\Jobs;
 
 use App\Models\ListingExport;
-use App\Services\Scraping\ListingIndexExtractor;
+use App\Services\Scraping\ListingIndexDiscoveryService;
 use App\Services\UrlSafetyValidator;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class FetchListingIndexJob implements ShouldQueue
@@ -31,7 +30,7 @@ class FetchListingIndexJob implements ShouldQueue
 
     public function __construct(public int $listingExportId) {}
 
-    public function handle(UrlSafetyValidator $urlSafety, ListingIndexExtractor $indexExtractor): void
+    public function handle(UrlSafetyValidator $urlSafety, ListingIndexDiscoveryService $indexDiscovery): void
     {
         $export = ListingExport::query()->findOrFail($this->listingExportId);
 
@@ -42,21 +41,7 @@ class FetchListingIndexJob implements ShouldQueue
 
         $urlSafety->assertPublicHttpUrl($export->listing_page_url);
 
-        $response = Http::withHeaders([
-            'User-Agent' => (string) config('facebook_marketplace.http_user_agent'),
-            'Accept' => 'text/html,application/xhtml+xml',
-        ])
-            ->timeout((int) config('facebook_marketplace.scraper_timeout_seconds'))
-            ->get($export->listing_page_url);
-
-        if (! $response->successful()) {
-            throw new \RuntimeException('Listings page returned HTTP '.$response->status().'.');
-        }
-
-        $html = $response->body();
-        $max = (int) config('facebook_marketplace.max_listings_per_job');
-
-        $urls = $indexExtractor->extractCandidateListingUrls($export->listing_page_url, $html, $max);
+        $urls = $indexDiscovery->discoverListingUrls($export->listing_page_url);
 
         Log::info('Listing index extracted', [
             'export_id' => $export->id,

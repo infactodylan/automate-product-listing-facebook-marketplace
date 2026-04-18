@@ -33,11 +33,6 @@ class BuildExportJob implements ShouldQueue
     {
         $export = ListingExport::query()->findOrFail($this->listingExportId);
 
-        $export->update([
-            'status' => ListingExport::STATUS_DOWNLOADING_IMAGES,
-            'error_message' => null,
-        ]);
-
         /** @var array<int, array<string, mixed>>|null $products */
         $products = $export->scraped_products;
         if (! is_array($products) || $products === []) {
@@ -46,6 +41,7 @@ class BuildExportJob implements ShouldQueue
 
         $export->update([
             'status' => ListingExport::STATUS_BUILDING_PACKAGE,
+            'error_message' => null,
         ]);
 
         $zipRelative = $builder->build($export, $products);

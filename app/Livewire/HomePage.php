@@ -7,8 +7,10 @@ use App\Jobs\FetchListingIndexJob;
 use App\Jobs\ScrapeListingJob;
 use App\Models\ListingExport;
 use App\Services\UrlSafetyValidator;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Session;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Livewire\Component;
 use Livewire\Features\SupportPageComponents\BaseTitle;
@@ -23,6 +25,30 @@ class HomePage extends Component
     public ?string $deliveryUrl = null;
 
     public ?string $errorMessage = null;
+
+    public function mount(Request $request): void
+    {
+        $candidate = $request->query('url')
+            ?? $request->query('listing_page_url')
+            ?? $request->query('listing_url');
+
+        if (! is_string($candidate)) {
+            return;
+        }
+
+        $candidate = trim($candidate);
+
+        if ($candidate === '') {
+            return;
+        }
+
+        if (Validator::make(
+            ['listingPageUrl' => $candidate],
+            ['listingPageUrl' => ['required', 'url']],
+        )->passes()) {
+            $this->listingPageUrl = $candidate;
+        }
+    }
 
     public function generateExport(UrlSafetyValidator $urlSafety): void
     {
@@ -103,8 +129,8 @@ class HomePage extends Component
             ListingExport::STATUS_QUEUED => 'Queued',
             ListingExport::STATUS_FETCHING_INDEX => 'Fetching listings index',
             ListingExport::STATUS_SCRAPING_LISTINGS => 'Parsing listings',
-            ListingExport::STATUS_DOWNLOADING_IMAGES => 'Downloading images',
-            ListingExport::STATUS_BUILDING_PACKAGE => 'Building spreadsheet and zip',
+            ListingExport::STATUS_DOWNLOADING_IMAGES => 'Building spreadsheet and package',
+            ListingExport::STATUS_BUILDING_PACKAGE => 'Building spreadsheet, downloading images, creating zip',
             ListingExport::STATUS_READY => 'Ready',
             ListingExport::STATUS_FAILED => 'Failed',
             default => $export->status,
@@ -121,8 +147,8 @@ class HomePage extends Component
             ListingExport::STATUS_QUEUED => 5,
             ListingExport::STATUS_FETCHING_INDEX => 20,
             ListingExport::STATUS_SCRAPING_LISTINGS => 45,
-            ListingExport::STATUS_DOWNLOADING_IMAGES => 70,
-            ListingExport::STATUS_BUILDING_PACKAGE => 90,
+            ListingExport::STATUS_DOWNLOADING_IMAGES => 75,
+            ListingExport::STATUS_BUILDING_PACKAGE => 75,
             ListingExport::STATUS_READY => 100,
             ListingExport::STATUS_FAILED => 100,
             default => 10,

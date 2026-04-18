@@ -23,7 +23,7 @@ class MarketplaceExportPackageBuilderMaxImagesTest extends TestCase
 
         Http::fake(function (Request $request) {
             if (str_contains($request->url(), 'cdn.example.com')) {
-                return Http::response('jpeg-bytes', 200, ['Content-Type' => 'image/jpeg']);
+                return Http::response('jpeg-bytes-'.md5($request->url()), 200, ['Content-Type' => 'image/jpeg']);
             }
 
             return Http::response('unexpected', 404);

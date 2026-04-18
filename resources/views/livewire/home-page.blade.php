@@ -8,7 +8,7 @@
 
     <main
         class="container mx-auto max-w-2xl px-4 py-10"
-        @if ($activeExportId && ! $deliveryUrl && ! $errorMessage)
+        @if ($activeExportId && ! $errorMessage)
             wire:poll.2s="pollExport"
         @endif
     >
@@ -57,41 +57,13 @@
                     </div>
                 @endif
 
-                @if ($deliveryUrl)
-                    <div class="alert alert-success">
-                        <div class="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div class="min-w-0">
-                                <div class="font-medium">Your download link</div>
-                                <div class="truncate text-sm opacity-80" title="{{ $deliveryUrl }}">{{ $deliveryUrl }}</div>
-                            </div>
-                            <div class="flex gap-2">
-                                <button
-                                    type="button"
-                                    class="btn btn-sm"
-                                    x-data="{ url: @js($deliveryUrl) }"
-                                    x-on:click="navigator.clipboard.writeText(url)"
-                                >
-                                    Copy
-                                </button>
-                                <a class="btn btn-sm btn-primary" href="{{ $deliveryUrl }}" wire:navigate>Open</a>
-                            </div>
-                        </div>
-                    </div>
-
-                    @if ($export?->expires_at)
-                        <div class="text-sm text-base-content/70">
-                            Link expires {{ $export->expires_at->timezone(config('app.timezone'))->toDayDateTimeString() }}.
-                        </div>
-                    @endif
-                @endif
-
                 <div class="card-actions justify-end">
                     <button
                         type="button"
                         class="btn btn-primary"
                         wire:click="generateExport"
                         wire:loading.attr="disabled"
-                        @if ($activeExportId && ! $deliveryUrl && ! $errorMessage)
+                        @if ($activeExportId && ! $errorMessage)
                             disabled
                         @endif
                     >

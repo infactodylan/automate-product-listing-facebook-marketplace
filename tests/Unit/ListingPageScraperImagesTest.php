@@ -12,7 +12,10 @@ class ListingPageScraperImagesTest extends TestCase
     {
         parent::setUp();
 
-        config(['openai.listing_detail_images_openai_enabled' => false]);
+        config([
+            'openai.listing_detail_images_openai_enabled' => false,
+            'openai.listing_detail_images_refine_when_present' => false,
+        ]);
     }
 
     public function test_it_collects_vehicle_json_ld_lazy_img_sources_in_gallery_and_meta_images(): void
@@ -47,11 +50,12 @@ class ListingPageScraperImagesTest extends TestCase
             'https://cdn.example.com/hero.jpg',
             'https://cdn.example.com/og.jpg',
             'https://cdn.example.com/lazy.jpg',
-            'https://cdn.example.com/small.jpg',
             'https://cdn.example.com/large.jpg',
         ] as $u) {
             $this->assertContains($u, $row['image_urls']);
         }
+
+        $this->assertNotContains('https://cdn.example.com/small.jpg', $row['image_urls']);
 
         $this->assertNotContains('https://cdn.example.com/header-promo.jpg', $row['image_urls']);
     }

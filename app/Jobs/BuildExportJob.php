@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\ListingExport;
 use App\Services\FacebookMarketplace\MarketplaceExportPackageBuilder;
+use App\Services\OpenAi\ListingImageVisionGate;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -43,6 +44,8 @@ class BuildExportJob implements ShouldQueue
             'status' => ListingExport::STATUS_BUILDING_PACKAGE,
             'error_message' => null,
         ]);
+
+        $products = app(ListingImageVisionGate::class)->filterScrapedProducts($products);
 
         $zipRelative = $builder->build($export, $products);
 

@@ -3,6 +3,7 @@
 namespace App\Services\OpenAi;
 
 use App\Services\Scraping\ListingIndexExtractor;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class ListingIndexOpenAiDiscoverer
@@ -20,7 +21,8 @@ class ListingIndexOpenAiDiscoverer
     }
 
     /**
-     * Uses OpenAI web_search (domain-filtered) to discover listing detail URLs.
+     * Uses OpenAI web_search (domain-filtered); results are intersected with URLs
+     * extracted from the user's HTML page so only on-page listing links are kept.
      *
      * @return list<string>
      */
@@ -86,13 +88,61 @@ class ListingIndexOpenAiDiscoverer
 
         $filtered = $this->indexExtractor->filterListingUrls($listingPageUrl, $gathered, $maxListings);
 
+        $filtered = $this->restrictToUrlsLinkedOnUserPage($listingPageUrl, $filtered, $maxListings);
+
         Log::info('OpenAI listing index discoverer: URLs extracted', [
             'inventory_url' => $listingPageUrl,
             'urls_from_response' => count($gathered),
-            'urls_after_domain_filter' => count($filtered),
+            'urls_after_domain_and_page_filter' => count($filtered),
         ]);
 
         return $filtered;
+    }
+
+    /**
+     * Keep only URLs that appear as same-site listing links on the exact HTML document
+     * at {@see $listingPageUrl}. This prevents web_search from returning unrelated paths
+     * elsewhere on the domain.
+     *
+     * @param  list<string>  $openAiUrls
+     * @return list<string>
+     */
+    private function restrictToUrlsLinkedOnUserPage(string $listingPageUrl, array $openAiUrls, int $maxListings): array
+    {
+        if ($openAiUrls === []) {
+            return [];
+        }
+
+        $response = Http::withHeaders([
+            'User-Agent' => (string) config('facebook_marketplace.http_user_agent'),
+            'Accept' => 'text/html,application/xhtml+xml',
+        ])
+            ->timeout((int) config('facebook_marketplace.scraper_timeout_seconds'))
+            ->get($listingPageUrl);
+
+        if (! $response->successful()) {
+            Log::warning('OpenAI listing index discoverer: user page fetch failed; dropping OpenAI URLs', [
+                'inventory_url' => $listingPageUrl,
+                'http_status' => $response->status(),
+            ]);
+
+            return [];
+        }
+
+        $cap = max(500, $maxListings * 50);
+        $pageUrls = $this->indexExtractor->extractCandidateListingUrls($listingPageUrl, $response->body(), $cap);
+
+        $openSet = array_fill_keys($openAiUrls, true);
+
+        /** @var list<string> $ordered */
+        $ordered = [];
+        foreach ($pageUrls as $u) {
+            if (isset($openSet[$u]) && count($ordered) < $maxListings) {
+                $ordered[] = $u;
+            }
+        }
+
+        return $ordered;
     }
 
     private function buildInstructions(string $listingPageUrl, int $maxListings): string

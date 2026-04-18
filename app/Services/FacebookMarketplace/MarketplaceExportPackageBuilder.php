@@ -85,6 +85,25 @@ class MarketplaceExportPackageBuilder
         $manifestImages = [];
         $budgetExhausted = false;
 
+        /** @var list<array<string, mixed>> $visionAudit */
+        $visionAudit = [];
+        foreach ($scrapedProducts as $product) {
+            if (! isset($product['image_vision_manifest']) || ! is_array($product['image_vision_manifest'])) {
+                continue;
+            }
+            foreach ($product['image_vision_manifest'] as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $visionAudit[] = [
+                    'product_title' => (string) ($product['title'] ?? ''),
+                    'url' => isset($row['url']) ? (string) $row['url'] : '',
+                    'keep' => $row['keep'] ?? null,
+                    'reason' => isset($row['reason']) ? (string) $row['reason'] : '',
+                ];
+            }
+        }
+
         foreach ($scrapedProducts as $idx => $product) {
             $folder = $folderNames[$idx] ?? ('listing-'.($idx + 1));
             $folderRelative = $packageDir.'/'.$folder;
@@ -105,6 +124,9 @@ class MarketplaceExportPackageBuilder
 
             $listingPageReferer = (string) ($product['source_url'] ?? '');
             $savedCount = 0;
+
+            /** @var array<string, true> $savedBodyHashes */
+            $savedBodyHashes = [];
 
             $urlList = array_values($urls);
             if ($urlList !== []) {
@@ -176,6 +198,21 @@ class MarketplaceExportPackageBuilder
                             throw new \RuntimeException('Empty image body.');
                         }
 
+                        $body = $this->maybeDownscaleImageBody($body, $ext);
+                        $len = strlen($body);
+
+                        $hash = hash('sha256', $body);
+                        if (isset($savedBodyHashes[$hash])) {
+                            $manifestImages[] = [
+                                'product_title' => (string) ($product['title'] ?? ''),
+                                'image_url' => $imageUrl,
+                                'status' => 'skipped',
+                                'error' => 'Duplicate image (identical bytes to another saved photo for this listing).',
+                            ];
+
+                            continue;
+                        }
+
                         if ($imageBytesUsed + $len > $maxImageBytes) {
                             $budgetExhausted = true;
                             Log::warning('Listing export package: image budget reached', [
@@ -195,6 +232,7 @@ class MarketplaceExportPackageBuilder
                         }
 
                         Storage::put($relativeFile, $body);
+                        $savedBodyHashes[$hash] = true;
                         $imageBytesUsed += $len;
                         $savedCount++;
                         Log::info('Listing export package: image saved', [
@@ -238,6 +276,7 @@ class MarketplaceExportPackageBuilder
 
         Storage::put($packageDir.'/manifest.json', json_encode([
             'image_downloads' => $manifestImages,
+            'listing_image_vision' => $visionAudit,
             'image_bytes_used' => $imageBytesUsed,
             'image_bytes_budget' => $maxImageBytes,
             'budget_exhausted' => $budgetExhausted,
@@ -280,6 +319,64 @@ class MarketplaceExportPackageBuilder
         ]);
 
         return $zipRelative;
+    }
+
+    /**
+     * Optionally downscale raster bytes using GD when configured max width/height are set.
+     */
+    private function maybeDownscaleImageBody(string $body, string $extLower): string
+    {
+        $maxW = (int) config('facebook_marketplace.image_output_max_width');
+        $maxH = (int) config('facebook_marketplace.image_output_max_height');
+        if (($maxW <= 0 && $maxH <= 0) || ! extension_loaded('gd')) {
+            return $body;
+        }
+
+        $info = @getimagesizefromstring($body);
+        if ($info === false) {
+            return $body;
+        }
+
+        /** @var positive-int $w */
+        $w = $info[0];
+        /** @var positive-int $h */
+        $h = $info[1];
+
+        $ratioW = $maxW > 0 ? $maxW / $w : PHP_FLOAT_MAX;
+        $ratioH = $maxH > 0 ? $maxH / $h : PHP_FLOAT_MAX;
+        $ratio = min($ratioW, $ratioH, 1.0);
+        if ($ratio >= 1.0) {
+            return $body;
+        }
+
+        $src = @imagecreatefromstring($body);
+        if ($src === false) {
+            return $body;
+        }
+
+        $nw = max(1, (int) round($w * $ratio));
+        $nh = max(1, (int) round($h * $ratio));
+        $dst = imagescale($src, $nw, $nh);
+        imagedestroy($src);
+        if ($dst === false) {
+            return $body;
+        }
+
+        ob_start();
+        if ($extLower === 'png') {
+            imagealphablending($dst, false);
+            imagesavealpha($dst, true);
+            imagepng($dst, null, 6);
+        } elseif ($extLower === 'webp' && function_exists('imagewebp')) {
+            imagewebp($dst, null, 90);
+        } else {
+            imagejpeg($dst, null, 90);
+        }
+
+        imagedestroy($dst);
+        $out = ob_get_clean();
+
+        return is_string($out) && $out !== '' ? $out : $body;
     }
 
     private function guessExtensionFromUrl(string $url): string

@@ -2,11 +2,11 @@
 
 namespace App\Livewire;
 
-use App\Jobs\BuildExportJob;
 use App\Jobs\FetchListingIndexJob;
-use App\Jobs\ScrapeListingJob;
+use App\Jobs\StartListingScrapeBatchJob;
 use App\Models\ListingExport;
 use App\Services\UrlSafetyValidator;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Session;
@@ -21,8 +21,6 @@ class HomePage extends Component
     public string $listingPageUrl = '';
 
     public ?int $activeExportId = null;
-
-    public ?string $deliveryUrl = null;
 
     public ?string $errorMessage = null;
 
@@ -50,10 +48,9 @@ class HomePage extends Component
         }
     }
 
-    public function generateExport(UrlSafetyValidator $urlSafety): void
+    public function generateExport(UrlSafetyValidator $urlSafety): ?RedirectResponse
     {
         $this->errorMessage = null;
-        $this->deliveryUrl = null;
 
         $this->validate([
             'listingPageUrl' => ['required', 'url'],
@@ -64,7 +61,7 @@ class HomePage extends Component
         } catch (\Throwable $e) {
             $this->addError('listingPageUrl', $e->getMessage());
 
-            return;
+            return null;
         }
 
         $token = bin2hex(random_bytes(32));
@@ -85,38 +82,39 @@ class HomePage extends Component
 
         Bus::chain([
             new FetchListingIndexJob($export->id),
-            new ScrapeListingJob($export->id),
-            new BuildExportJob($export->id),
+            new StartListingScrapeBatchJob($export->id),
         ])->dispatch();
 
-        $this->pollExport();
+        return $this->pollExport();
     }
 
-    public function pollExport(): void
+    public function pollExport(): ?RedirectResponse
     {
         $pending = Session::get('pending_export');
         if (! is_array($pending) || ! isset($pending['id'], $pending['token'])) {
-            return;
+            return null;
         }
 
         if ((int) $pending['id'] !== (int) $this->activeExportId) {
-            return;
+            return null;
         }
 
         $export = ListingExport::query()->find($this->activeExportId);
         if (! $export) {
-            return;
+            return null;
         }
 
         if ($export->status === ListingExport::STATUS_READY) {
-            $this->deliveryUrl = url('/d/'.$pending['token']);
             $this->errorMessage = null;
+
+            return $this->redirect(route('exports.show', ['token' => $pending['token']]));
         }
 
         if ($export->status === ListingExport::STATUS_FAILED) {
             $this->errorMessage = $export->error_message ?? 'Export failed.';
-            $this->deliveryUrl = null;
         }
+
+        return null;
     }
 
     public function progressLabel(?ListingExport $export): string

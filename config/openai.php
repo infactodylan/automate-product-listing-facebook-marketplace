@@ -7,8 +7,9 @@ return [
     | OpenAI API (Responses API)
     |--------------------------------------------------------------------------
     |
-    | listing index + optional per-listing image URL discovery use web_search.
-    | Set OPENAI_API_KEY in .env.
+    | Defaults enable every integration below when unset in .env; services still
+    | no-op until OPENAI_API_KEY is set. Override individual *_ENABLED env vars to false
+    | to reduce cost or skip a step.
     |
     */
 
@@ -24,7 +25,7 @@ return [
     |--------------------------------------------------------------------------
     */
 
-    'listing_index_model' => env('OPENAI_LISTING_INDEX_MODEL', 'gpt-5'),
+    'listing_index_model' => env('OPENAI_LISTING_INDEX_MODEL', 'gpt-5.4'),
 
     'listing_index_reasoning_effort' => env('OPENAI_LISTING_INDEX_REASONING_EFFORT', 'medium'),
 
@@ -50,7 +51,7 @@ return [
     |--------------------------------------------------------------------------
     */
 
-    'listing_detail_images_model' => env('OPENAI_LISTING_DETAIL_IMAGES_MODEL', 'gpt-5'),
+    'listing_detail_images_model' => env('OPENAI_LISTING_DETAIL_IMAGES_MODEL', 'gpt-5.4'),
 
     'listing_detail_images_reasoning_effort' => env('OPENAI_LISTING_DETAIL_IMAGES_REASONING_EFFORT', 'medium'),
 
@@ -65,5 +66,30 @@ return [
 
         return true;
     })(),
+
+    /**
+     * When true and OPENAI_API_KEY is set, run web_search photo discovery even when HTML already yielded URLs.
+     * Results merge with HTML extraction (lower priority than JSON-LD / DOM / meta).
+     */
+    'listing_detail_images_refine_when_present' => filter_var(
+        env('OPENAI_LISTING_DETAIL_IMAGES_REFINE_WHEN_PRESENT', true),
+        FILTER_VALIDATE_BOOLEAN,
+    ),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Vision gate (approve listing images before download)
+    |--------------------------------------------------------------------------
+    */
+
+    'listing_image_vision_enabled' => filter_var(
+        env('OPENAI_LISTING_IMAGE_VISION_ENABLED', true),
+        FILTER_VALIDATE_BOOLEAN,
+    ),
+
+    'listing_image_vision_model' => env('OPENAI_LISTING_IMAGE_VISION_MODEL', 'gpt-5.4'),
+
+    /** Max candidate URLs sent to the vision model per listing (cost/latency cap). */
+    'listing_image_vision_max_candidates' => max(1, (int) env('OPENAI_LISTING_IMAGE_VISION_MAX_CANDIDATES', 12)),
 
 ];

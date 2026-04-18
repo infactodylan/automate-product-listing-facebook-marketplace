@@ -10,6 +10,19 @@ class ListingPageScraper
 {
     private const JSON_LD_IMAGE_DEPTH_MAX = 14;
 
+    /** Tier 0 = JSON-LD (highest priority). Larger number = weaker source. */
+    private const TIER_JSON_LD = 0;
+
+    private const TIER_DOM_GALLERY = 1;
+
+    private const TIER_META = 2;
+
+    private const TIER_OPENAI_REFINE = 3;
+
+    private const TIER_REGEX_FALLBACK = 4;
+
+    private const TIER_OPENAI_EMPTY = 5;
+
     /** @see extractDomProductImageUrls() */
     private const PRODUCT_GALLERY_ANCESTOR_PATTERN = '/(gallery|carousel|swiper|inventory|vehicle|vdp|listing\-photo|detail\-photo|photo\-gallery|image\-gallery|vehicle\-gallery|inventory\-detail|listing\-detail|slideshow|lightbox|media\-gallery|vehicles\-gallery|stock\-photos|product\-media|vehicle\-photos|photos\-wrapper|inventory\-photos|listing\-gallery)/i';
 
@@ -76,46 +89,64 @@ class ListingPageScraper
             'types' => is_array($productTypes) ? $productTypes : (is_string($productTypes) ? [$productTypes] : $productTypes),
         ]);
 
-        $images = [];
+        /** @var list<array{url: string, tier: int}> $candidates */
+        $candidates = [];
 
         $fromProductNode = $this->extractImagesFromJsonNode($product, $url, 0);
-        $images = array_merge($images, $fromProductNode);
+        foreach ($fromProductNode as $raw) {
+            $this->pushImageCandidate($candidates, $raw, $url, self::TIER_JSON_LD);
+        }
         $this->logScrapePhase('images_json_ld_product_subtree', $url, $listingExportId, ['count' => count($fromProductNode)]);
 
+        $fromDom = $this->extractDomProductImageUrls($html, $url);
+        foreach ($fromDom as $raw) {
+            $this->pushImageCandidate($candidates, $raw, $url, self::TIER_DOM_GALLERY);
+        }
+        $this->logScrapePhase('images_dom_product_gallery', $url, $listingExportId, ['count' => count($fromDom)]);
+
         $fromMeta = $this->extractMetaImages($html, $url);
-        $images = array_merge($images, $fromMeta);
+        foreach ($fromMeta as $raw) {
+            $this->pushImageCandidate($candidates, $raw, $url, self::TIER_META);
+        }
         $this->logScrapePhase('images_meta_og_twitter', $url, $listingExportId, ['count' => count($fromMeta)]);
 
-        $fromDom = $this->extractDomProductImageUrls($html, $url);
-        $images = array_merge($images, $fromDom);
-        $this->logScrapePhase('images_dom_product_gallery', $url, $listingExportId, ['count' => count($fromDom)]);
+        if (config('openai.listing_detail_images_refine_when_present')
+            && $this->openAiListingImages->isConfigured()) {
+            $this->logScrapePhase('openai_listing_images_refine_start', $url, $listingExportId, []);
+            try {
+                $fromOpenAiRefine = $this->openAiListingImages->discoverImageUrls($url);
+                foreach ($fromOpenAiRefine as $imgUrl) {
+                    $this->pushImageCandidate($candidates, $imgUrl, $url, self::TIER_OPENAI_REFINE);
+                }
+                $this->logScrapePhase('openai_listing_images_refine_done', $url, $listingExportId, [
+                    'urls_returned' => count($fromOpenAiRefine),
+                ]);
+            } catch (\Throwable $e) {
+                Log::warning('OpenAI listing image refine failed', [
+                    'url' => $url,
+                    'listing_export_id' => $listingExportId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        $images = ListingImageUrlNormalizer::mergeTieredUnique($candidates);
+
+        $this->logScrapePhase('images_after_tier_merge', $url, $listingExportId, [
+            'unique_count' => count($images),
+        ]);
 
         if ($images === []) {
             $fromRegex = $this->extractRegexImageCandidates($html);
-            $images = array_merge($images, $fromRegex);
+            foreach ($fromRegex as $raw) {
+                $this->pushImageCandidate($candidates, $raw, $url, self::TIER_REGEX_FALLBACK);
+            }
             $this->logScrapePhase('images_regex_fallback', $url, $listingExportId, [
                 'count' => count($fromRegex),
                 'note' => 'No product-sourced images yet; using URL regex as last resort before OpenAI.',
             ]);
+            $images = ListingImageUrlNormalizer::mergeTieredUnique($candidates);
         }
-
-        $beforeFilterCount = count($images);
-        $images = array_values(array_unique(array_filter(array_map(function (string $u) use ($url): ?string {
-            $u = trim($u);
-            if ($u === '' || $this->shouldExcludeNoiseImageUrl($u)) {
-                return null;
-            }
-            $absolute = preg_match('#^https?://#i', $u) === 1 ? $u : $this->toAbsoluteUrl($url, $u);
-            if ($this->shouldExcludeNoiseImageUrl($absolute)) {
-                return null;
-            }
-
-            return $absolute;
-        }, $images))));
-        $this->logScrapePhase('images_after_normalize_and_noise_filter', $url, $listingExportId, [
-            'before_filter' => $beforeFilterCount,
-            'after' => count($images),
-        ]);
 
         if ($images === [] && config('openai.listing_detail_images_openai_enabled')
             && $this->openAiListingImages->isConfigured()) {
@@ -124,14 +155,11 @@ class ListingPageScraper
                 $fromOpenAi = $this->openAiListingImages->discoverImageUrls($url);
                 $added = 0;
                 foreach ($fromOpenAi as $imgUrl) {
-                    $imgUrl = trim($imgUrl);
-                    if ($imgUrl === '' || $this->shouldExcludeNoiseImageUrl($imgUrl)) {
-                        continue;
+                    if ($this->pushImageCandidate($candidates, $imgUrl, $url, self::TIER_OPENAI_EMPTY)) {
+                        $added++;
                     }
-                    $images[] = $imgUrl;
-                    $added++;
                 }
-                $images = array_values(array_unique($images));
+                $images = ListingImageUrlNormalizer::mergeTieredUnique($candidates);
                 $this->logScrapePhase('openai_listing_images_done', $url, $listingExportId, [
                     'raw_from_openai' => count($fromOpenAi),
                     'added_after_noise_filter' => $added,
@@ -171,6 +199,26 @@ class ListingPageScraper
             'image_urls' => $images,
             'source_url' => $url,
         ];
+    }
+
+    /**
+     * @param  list<array{url: string, tier: int}>  $candidates
+     */
+    private function pushImageCandidate(array &$candidates, string $raw, string $baseUrl, int $tier): bool
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return false;
+        }
+
+        $absolute = preg_match('#^https?://#i', $raw) === 1 ? $raw : $this->toAbsoluteUrl($baseUrl, $raw);
+        if ($this->shouldExcludeNoiseImageUrl($absolute)) {
+            return false;
+        }
+
+        $candidates[] = ['url' => $absolute, 'tier' => $tier];
+
+        return true;
     }
 
     /**
@@ -353,40 +401,33 @@ class ListingPageScraper
                 continue;
             }
 
-            foreach (['src', 'data-src', 'data-lazy-src', 'data-original', 'data-image'] as $attr) {
-                $href = $img->getAttribute($attr);
-                if ($href === '' || str_starts_with(strtolower($href), 'data:')) {
-                    continue;
-                }
-                $absolute = $this->toAbsoluteUrl($baseUrl, $href);
-                if ($this->shouldExcludeNoiseImageUrl($absolute)) {
-                    continue;
-                }
-                if ($this->domImgMatchesProductContext($img, $absolute)) {
-                    $urls[] = $absolute;
+            $chosen = null;
+            $srcset = $img->getAttribute('srcset');
+            if ($srcset !== '') {
+                $chosen = SrcsetParser::pickLargestAbsoluteUrl($srcset, $baseUrl);
+            }
+
+            if ($chosen === null || $chosen === '') {
+                foreach (['src', 'data-src', 'data-lazy-src', 'data-original', 'data-image'] as $attr) {
+                    $href = $img->getAttribute($attr);
+                    if ($href === '' || str_starts_with(strtolower($href), 'data:')) {
+                        continue;
+                    }
+                    $chosen = $this->toAbsoluteUrl($baseUrl, $href);
+                    break;
                 }
             }
 
-            $srcset = $img->getAttribute('srcset');
-            if ($srcset !== '') {
-                foreach (explode(',', $srcset) as $piece) {
-                    $piece = trim($piece);
-                    if ($piece === '') {
-                        continue;
-                    }
-                    $parts = preg_split('/\s+/', $piece);
-                    $first = $parts[0] ?? '';
-                    if ($first === '' || str_starts_with(strtolower($first), 'data:')) {
-                        continue;
-                    }
-                    $absolute = $this->toAbsoluteUrl($baseUrl, $first);
-                    if ($this->shouldExcludeNoiseImageUrl($absolute)) {
-                        continue;
-                    }
-                    if ($this->domImgMatchesProductContext($img, $absolute)) {
-                        $urls[] = $absolute;
-                    }
-                }
+            if ($chosen === null || $chosen === '') {
+                continue;
+            }
+
+            if ($this->shouldExcludeNoiseImageUrl($chosen)) {
+                continue;
+            }
+
+            if ($this->domImgMatchesProductContext($img, $chosen)) {
+                $urls[] = $chosen;
             }
         }
 

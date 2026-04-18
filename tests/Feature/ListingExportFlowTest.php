@@ -2,13 +2,10 @@
 
 namespace Tests\Feature;
 
-use App\Jobs\BuildExportJob;
 use App\Jobs\FetchListingIndexJob;
-use App\Jobs\ScrapeListingJob;
+use App\Jobs\StartListingScrapeBatchJob;
 use App\Models\ListingExport;
-use App\Services\FacebookMarketplace\MarketplaceExportPackageBuilder;
 use App\Services\Scraping\ListingIndexDiscoveryService;
-use App\Services\Scraping\ListingPageScraper;
 use App\Services\UrlSafetyValidator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -64,13 +61,7 @@ class ListingExportFlowTest extends TestCase
             app(ListingIndexDiscoveryService::class),
         );
 
-        (new ScrapeListingJob($export->id))->handle(
-            app(ListingPageScraper::class),
-        );
-
-        (new BuildExportJob($export->id))->handle(
-            app(MarketplaceExportPackageBuilder::class),
-        );
+        (new StartListingScrapeBatchJob($export->id))->handle();
 
         $export->refresh();
 
@@ -119,7 +110,11 @@ class ListingExportFlowTest extends TestCase
         config(['facebook_marketplace.max_listings_per_job' => 25]);
         config(['facebook_marketplace.max_total_image_bytes' => 1024 * 1024]);
         config(['openai.listing_index_openai_enabled' => false]);
-        config(['openai.listing_detail_images_openai_enabled' => false]);
+        config([
+            'openai.listing_detail_images_openai_enabled' => false,
+            'openai.listing_detail_images_refine_when_present' => false,
+            'openai.listing_image_vision_enabled' => false,
+        ]);
     }
 
     public function test_fetch_index_uses_openai_when_http_is_sparse_and_fallback_enabled(): void
@@ -130,7 +125,8 @@ class ListingExportFlowTest extends TestCase
         config(['openai.api_key' => 'sk-test']);
         config(['openai.base_url' => 'https://api.openai.com/v1']);
 
-        $indexHtml = '<html><body><a href="/about">About</a></body></html>';
+        $indexHtml = '<html><body><a href="/about">About</a>'
+            .'<a href="/listings/2019-honda-civic">Vehicle</a></body></html>';
         $listingPageUrl = 'https://example.com/search';
 
         $listingHtml = <<<'HTML'

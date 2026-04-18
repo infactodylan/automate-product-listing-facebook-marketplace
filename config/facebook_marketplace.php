@@ -44,6 +44,14 @@ return [
     'max_images_per_listing' => (int) env('MAX_IMAGES_PER_LISTING', 5),
 
     /**
+     * If set (>0) and PHP GD is available, downscale saved listing images so neither edge exceeds these bounds.
+     * Uses proportional scaling (does not crop). 0 = no resizing.
+     */
+    'image_output_max_width' => (int) env('IMAGE_OUTPUT_MAX_WIDTH', 0),
+
+    'image_output_max_height' => (int) env('IMAGE_OUTPUT_MAX_HEIGHT', 0),
+
+    /**
      * Concurrent image HTTP requests per listing (chunk size for Http::pool).
      * 1 = sequential downloads. Higher values speed up exports when each listing has multiple photos.
      */

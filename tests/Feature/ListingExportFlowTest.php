@@ -110,6 +110,7 @@ class ListingExportFlowTest extends TestCase
         config(['facebook_marketplace.max_listings_per_job' => 25]);
         config(['facebook_marketplace.max_total_image_bytes' => 1024 * 1024]);
         config(['openai.listing_index_openai_enabled' => false]);
+        config(['openai.listing_inventory_catalog_enabled' => false]);
         config([
             'openai.listing_detail_images_openai_enabled' => false,
             'openai.listing_detail_images_refine_when_present' => false,

@@ -54,6 +54,22 @@ return [
         return true;
     })(),
 
+    /**
+     * When true and OPENAI_API_KEY is set, index discovery first GETs the inventory page HTML,
+     * extracts application/ld+json blocks, and asks OpenAI for listing/detail URLs from HTML + JSON-LD.
+     * Runs before web_search index discovery when enabled.
+     */
+    'listing_inventory_catalog_enabled' => filter_var(
+        env('OPENAI_LISTING_INVENTORY_CATALOG_ENABLED', false),
+        FILTER_VALIDATE_BOOLEAN,
+    ),
+
+    'listing_inventory_catalog_model' => env('OPENAI_LISTING_INVENTORY_CATALOG_MODEL', 'gpt-5.4'),
+
+    'listing_inventory_catalog_max_html_chars' => max(8_000, (int) env('OPENAI_LISTING_INVENTORY_CATALOG_MAX_HTML_CHARS', 120_000)),
+
+    'listing_inventory_catalog_max_json_ld_chars' => max(4_000, (int) env('OPENAI_LISTING_INVENTORY_CATALOG_MAX_JSON_LD_CHARS', 80_000)),
+
     /*
     |--------------------------------------------------------------------------
     | Listing detail images (when static HTML has no photos)

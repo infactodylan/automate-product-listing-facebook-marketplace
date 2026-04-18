@@ -78,6 +78,9 @@ class ListingExportFlowTest extends TestCase
         $this->assertNotNull($export->zip_relative_path);
         Storage::assertExists($export->zip_relative_path);
 
+        Storage::assertExists('exports/'.$export->storage_key.'/package/listings.csv');
+        Storage::assertExists('exports/'.$export->storage_key.'/package/listings.xlsx');
+
         $this->get('/d/'.$token)
             ->assertOk()
             ->assertSee('Download zip', false);

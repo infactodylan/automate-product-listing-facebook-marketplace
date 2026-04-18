@@ -1,6 +1,9 @@
 <div>
     <header class="navbar border-b border-base-300 bg-base-100 px-4">
-        <span class="text-lg font-semibold">{{ config('app.name') }}</span>
+        <div class="flex flex-1 items-center justify-between gap-4">
+            <a href="{{ route('home') }}" wire:navigate class="text-lg font-semibold">{{ config('app.name') }}</a>
+            <a href="{{ route('exports.index') }}" wire:navigate class="btn btn-ghost btn-sm">All exports</a>
+        </div>
     </header>
 
     <main

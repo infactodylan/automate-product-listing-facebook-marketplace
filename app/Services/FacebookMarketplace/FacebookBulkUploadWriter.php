@@ -2,6 +2,9 @@
 
 namespace App\Services\FacebookMarketplace;
 
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+
 class FacebookBulkUploadWriter
 {
     /**
@@ -42,6 +45,46 @@ class FacebookBulkUploadWriter
             }
         } finally {
             fclose($handle);
+        }
+    }
+
+    /**
+     * @param  array<int, array{title: string, price: int, condition: string, description: string, category: string}>  $rows
+     */
+    public function writeXlsxToPath(array $rows, string $absolutePath): void
+    {
+        if (count($rows) > (int) config('facebook_marketplace.rows_per_workbook')) {
+            throw new \InvalidArgumentException('A single workbook may include at most '.(int) config('facebook_marketplace.rows_per_workbook').' data rows.');
+        }
+
+        $template = (string) config('facebook_marketplace.bulk_upload_template_path');
+        if (! is_file($template)) {
+            throw new \RuntimeException('Facebook bulk upload template CSV is missing at: '.$template);
+        }
+
+        $headers = $this->readTemplateHeaderRow($template);
+
+        $parent = dirname($absolutePath);
+        if (! is_dir($parent)) {
+            mkdir($parent, 0775, true);
+        }
+
+        $matrix = [$headers];
+        foreach ($rows as $data) {
+            $line = [];
+            foreach ($headers as $header) {
+                $line[] = $this->cellForHeader((string) $header, $data);
+            }
+            $matrix[] = $line;
+        }
+
+        $spreadsheet = new Spreadsheet;
+        $spreadsheet->getActiveSheet()->fromArray($matrix);
+
+        try {
+            (new Xlsx($spreadsheet))->save($absolutePath);
+        } finally {
+            $spreadsheet->disconnectWorksheets();
         }
     }
 

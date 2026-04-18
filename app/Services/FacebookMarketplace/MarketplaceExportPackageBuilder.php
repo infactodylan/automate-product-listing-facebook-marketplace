@@ -59,13 +59,15 @@ class MarketplaceExportPackageBuilder
         $chunks = array_chunk($normalizedRows, $rowsPerBook);
 
         foreach ($chunks as $i => $chunk) {
-            $name = count($chunks) === 1
-                ? 'listings.csv'
-                : sprintf('listings-part-%02d.csv', $i + 1);
+            $baseName = count($chunks) === 1
+                ? 'listings'
+                : sprintf('listings-part-%02d', $i + 1);
 
-            $relativePath = $packageDir.'/'.$name;
-            $absolute = Storage::path($relativePath);
-            $this->writer->writeCsvToPath($chunk, $absolute);
+            $csvRelative = $packageDir.'/'.$baseName.'.csv';
+            $this->writer->writeCsvToPath($chunk, Storage::path($csvRelative));
+
+            $xlsxRelative = $packageDir.'/'.$baseName.'.xlsx';
+            $this->writer->writeXlsxToPath($chunk, Storage::path($xlsxRelative));
         }
 
         foreach ($scrapedProducts as $idx => $_product) {

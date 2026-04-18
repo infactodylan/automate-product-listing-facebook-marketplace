@@ -71,9 +71,11 @@ class StartListingScrapeBatchJob implements ShouldQueue
             })
             ->dispatch();
 
-        Log::info('Listing scrape batch dispatched', [
+        Log::info('Listing scrape: queued jobs for detail pages (images)', [
             'export_id' => $exportId,
-            'job_count' => count($jobs),
+            'inventory_url' => $export->listing_page_url,
+            'detail_page_count' => count($urls),
+            'detail_urls' => array_values($urls),
         ]);
     }
 

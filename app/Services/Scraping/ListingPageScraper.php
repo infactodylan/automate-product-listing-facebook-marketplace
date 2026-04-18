@@ -3,7 +3,6 @@
 namespace App\Services\Scraping;
 
 use App\Services\OpenAi\ListingPageImagesOpenAiDiscoverer;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class ListingPageScraper
@@ -30,6 +29,7 @@ class ListingPageScraper
 
     public function __construct(
         private ListingPageImagesOpenAiDiscoverer $openAiListingImages,
+        private RenderedHtmlFetcher $renderedHtml,
     ) {}
 
     /**
@@ -47,18 +47,14 @@ class ListingPageScraper
     {
         $this->logScrapePhase('fetch_html', $url, $listingExportId, []);
 
-        $response = Http::timeout((int) config('facebook_marketplace.scraper_timeout_seconds'))
-            ->withOptions(['allow_redirects' => true])
-            ->get($url);
-
-        if (! $response->successful()) {
-            $this->logScrapePhase('fetch_html_failed', $url, $listingExportId, ['http_status' => $response->status()]);
-            throw new \RuntimeException('Listing page returned HTTP '.$response->status().'.');
+        try {
+            $html = $this->renderedHtml->fetch($url);
+        } catch (\Throwable $e) {
+            $this->logScrapePhase('fetch_html_failed', $url, $listingExportId, ['error' => $e->getMessage()]);
+            throw $e;
         }
 
-        $this->logScrapePhase('fetch_html_ok', $url, $listingExportId, ['bytes' => strlen($response->body())]);
-
-        $html = $response->body();
+        $this->logScrapePhase('fetch_html_ok', $url, $listingExportId, ['bytes' => strlen($html)]);
         $jsonLdBlocks = $this->extractJsonLdBlocks($html);
         $this->logScrapePhase('json_ld_blocks', $url, $listingExportId, ['count' => count($jsonLdBlocks)]);
 
@@ -491,7 +487,7 @@ class ListingPageScraper
      */
     private function logScrapePhase(string $phase, string $listingUrl, ?int $listingExportId, array $context): void
     {
-        Log::info('Listing page scrape', array_merge([
+        Log::debug('Listing page scrape', array_merge([
             'phase' => $phase,
             'listing_url' => $listingUrl,
             'listing_export_id' => $listingExportId,

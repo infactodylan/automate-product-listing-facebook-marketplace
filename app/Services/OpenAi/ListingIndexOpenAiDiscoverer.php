@@ -3,7 +3,7 @@
 namespace App\Services\OpenAi;
 
 use App\Services\Scraping\ListingIndexExtractor;
-use Illuminate\Support\Facades\Http;
+use App\Services\Scraping\RenderedHtmlFetcher;
 use Illuminate\Support\Facades\Log;
 
 class ListingIndexOpenAiDiscoverer
@@ -11,6 +11,7 @@ class ListingIndexOpenAiDiscoverer
     public function __construct(
         private OpenAiResponsesClient $client,
         private ListingIndexExtractor $indexExtractor,
+        private RenderedHtmlFetcher $renderedHtml,
     ) {}
 
     public function isConfigured(): bool
@@ -67,12 +68,7 @@ class ListingIndexOpenAiDiscoverer
             ]) ?: '{"ok":false}';
         };
 
-        Log::info('OpenAI listing index discoverer: starting Responses run', [
-            'inventory_url' => $listingPageUrl,
-            'max_listings' => $maxListings,
-            'model' => $model,
-            'domain' => $domain,
-        ]);
+        $debugSession = OpenAiDebugArtifactSession::start('listing-index', $listingPageUrl);
 
         $final = $this->client->runUntilIdle(
             $model,
@@ -82,18 +78,25 @@ class ListingIndexOpenAiDiscoverer
             $noopExecutor,
             (int) config('openai.max_tool_rounds'),
             $extraPayload,
+            $debugSession,
         );
 
         $gathered = OpenAiResponseUrlParser::allHttpUrls($final);
 
         $filtered = $this->indexExtractor->filterListingUrls($listingPageUrl, $gathered, $maxListings);
 
-        $filtered = $this->restrictToUrlsLinkedOnUserPage($listingPageUrl, $filtered, $maxListings);
+        $filtered = $this->restrictToUrlsLinkedOnUserPage($listingPageUrl, $filtered, $maxListings, $debugSession);
 
-        Log::info('OpenAI listing index discoverer: URLs extracted', [
+        if ($debugSession !== null) {
+            $debugSession->writeJson('discoverer-urls-gathered.json', ['urls' => $gathered]);
+            $debugSession->writeJson('discoverer-urls-final.json', ['urls' => $filtered]);
+        }
+
+        Log::debug('OpenAI listing index discoverer complete', [
             'inventory_url' => $listingPageUrl,
             'urls_from_response' => count($gathered),
             'urls_after_domain_and_page_filter' => count($filtered),
+            'debug_artifacts_path' => $debugSession?->basePath(),
         ]);
 
         return $filtered;
@@ -107,30 +110,37 @@ class ListingIndexOpenAiDiscoverer
      * @param  list<string>  $openAiUrls
      * @return list<string>
      */
-    private function restrictToUrlsLinkedOnUserPage(string $listingPageUrl, array $openAiUrls, int $maxListings): array
-    {
+    private function restrictToUrlsLinkedOnUserPage(
+        string $listingPageUrl,
+        array $openAiUrls,
+        int $maxListings,
+        ?OpenAiDebugArtifactSession $debugSession = null,
+    ): array {
         if ($openAiUrls === []) {
             return [];
         }
 
-        $response = Http::withHeaders([
-            'User-Agent' => (string) config('facebook_marketplace.http_user_agent'),
-            'Accept' => 'text/html,application/xhtml+xml',
-        ])
-            ->timeout((int) config('facebook_marketplace.scraper_timeout_seconds'))
-            ->get($listingPageUrl);
-
-        if (! $response->successful()) {
+        try {
+            $body = $this->renderedHtml->fetch($listingPageUrl);
+        } catch (\Throwable $e) {
             Log::warning('OpenAI listing index discoverer: user page fetch failed; dropping OpenAI URLs', [
                 'inventory_url' => $listingPageUrl,
-                'http_status' => $response->status(),
+                'error' => $e->getMessage(),
             ]);
 
             return [];
         }
 
+        if ($debugSession !== null) {
+            if (strlen($body) <= 5_000_000) {
+                $debugSession->writeText('same-site-filter-source.html', $body);
+            } else {
+                $debugSession->writeText('same-site-filter-source-skipped.txt', 'HTML omitted (>5MB).');
+            }
+        }
+
         $cap = max(500, $maxListings * 50);
-        $pageUrls = $this->indexExtractor->extractCandidateListingUrls($listingPageUrl, $response->body(), $cap);
+        $pageUrls = $this->indexExtractor->extractCandidateListingUrls($listingPageUrl, $body, $cap);
 
         $openSet = array_fill_keys($openAiUrls, true);
 

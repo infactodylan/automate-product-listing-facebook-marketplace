@@ -10,7 +10,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 
 class FetchListingIndexJob implements ShouldQueue
 {
@@ -42,12 +41,6 @@ class FetchListingIndexJob implements ShouldQueue
         $urlSafety->assertPublicHttpUrl($export->listing_page_url);
 
         $urls = $indexDiscovery->discoverListingUrls($export->listing_page_url);
-
-        Log::info('Listing index extracted', [
-            'export_id' => $export->id,
-            'domain' => parse_url($export->listing_page_url, PHP_URL_HOST),
-            'count' => count($urls),
-        ]);
 
         $export->update([
             'discovered_urls' => $urls,

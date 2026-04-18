@@ -17,6 +17,15 @@ return [
 
     'base_url' => rtrim((string) env('OPENAI_BASE_URL', 'https://api.openai.com/v1'), '/'),
 
+    /**
+     * When true, writes under storage/app/openai-debug/<date>/…: Responses API JSON per round,
+     * vision gate image downloads, and optional HTML snapshots. Off by default (latency + disk).
+     */
+    'debug_artifacts_enabled' => filter_var(
+        env('OPENAI_DEBUG_ARTIFACTS', false),
+        FILTER_VALIDATE_BOOLEAN,
+    ),
+
     'max_tool_rounds' => max(1, (int) env('OPENAI_MAX_TOOL_ROUNDS', 75)),
 
     /*

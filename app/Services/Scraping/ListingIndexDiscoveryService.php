@@ -3,7 +3,6 @@
 namespace App\Services\Scraping;
 
 use App\Services\OpenAi\ListingIndexOpenAiDiscoverer;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class ListingIndexDiscoveryService
@@ -11,6 +10,7 @@ class ListingIndexDiscoveryService
     public function __construct(
         private ListingIndexExtractor $indexExtractor,
         private ListingIndexOpenAiDiscoverer $openAiDiscoverer,
+        private RenderedHtmlFetcher $renderedHtml,
     ) {}
 
     /**
@@ -27,41 +27,38 @@ class ListingIndexDiscoveryService
             && $this->openAiDiscoverer->isConfigured();
 
         if ($useOpenAi) {
-            Log::info('Listing index discovery', [
-                'phase' => 'openai_attempt',
-                'inventory_url' => $listingPageUrl,
-                'max_listings' => $max,
-            ]);
             try {
                 $fromOpenAi = $this->openAiDiscoverer->discoverListingUrls($listingPageUrl, $max);
                 if ($fromOpenAi !== []) {
-                    Log::info('Listing index discovery', [
-                        'phase' => 'openai_complete',
-                        'inventory_url' => $listingPageUrl,
-                        'listing_url_count' => count($fromOpenAi),
-                    ]);
+                    $this->logListingCrawlPlan($listingPageUrl, $fromOpenAi, 'openai');
 
                     return $fromOpenAi;
                 }
-
-                Log::info('Listing index discovery', [
-                    'phase' => 'openai_empty_fallback_http',
-                    'inventory_url' => $listingPageUrl,
-                ]);
             } catch (\Throwable $e) {
                 Log::warning('OpenAI listing index discovery failed; using HTTP link extraction', [
-                    'url' => $listingPageUrl,
+                    'inventory_url' => $listingPageUrl,
                     'error' => $e->getMessage(),
                 ]);
             }
         }
 
-        Log::info('Listing index discovery', [
-            'phase' => 'http_extract',
-            'inventory_url' => $listingPageUrl,
-        ]);
+        $urls = $this->discoverUrlsViaHttp($listingPageUrl, $max);
+        $this->logListingCrawlPlan($listingPageUrl, $urls, 'http');
 
-        return $this->discoverUrlsViaHttp($listingPageUrl, $max);
+        return $urls;
+    }
+
+    /**
+     * @param  list<string>  $detailUrls
+     */
+    private function logListingCrawlPlan(string $inventoryUrl, array $detailUrls, string $discoverySource): void
+    {
+        Log::info('Listing crawl plan', [
+            'inventory_url' => $inventoryUrl,
+            'discovery_source' => $discoverySource,
+            'detail_page_count' => count($detailUrls),
+            'detail_urls' => array_values($detailUrls),
+        ]);
     }
 
     /**
@@ -69,27 +66,8 @@ class ListingIndexDiscoveryService
      */
     private function discoverUrlsViaHttp(string $listingPageUrl, int $max): array
     {
-        $response = Http::withHeaders([
-            'User-Agent' => (string) config('facebook_marketplace.http_user_agent'),
-            'Accept' => 'text/html,application/xhtml+xml',
-        ])
-            ->timeout((int) config('facebook_marketplace.scraper_timeout_seconds'))
-            ->get($listingPageUrl);
+        $html = $this->renderedHtml->fetch($listingPageUrl);
 
-        if (! $response->successful()) {
-            throw new \RuntimeException('Listings page returned HTTP '.$response->status().'.');
-        }
-
-        $html = $response->body();
-
-        $urls = $this->indexExtractor->extractCandidateListingUrls($listingPageUrl, $html, $max);
-
-        Log::info('Listing index discovery', [
-            'phase' => 'http_complete',
-            'inventory_url' => $listingPageUrl,
-            'listing_url_count' => count($urls),
-        ]);
-
-        return $urls;
+        return $this->indexExtractor->extractCandidateListingUrls($listingPageUrl, $html, $max);
     }
 }

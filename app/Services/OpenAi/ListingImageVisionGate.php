@@ -94,6 +94,11 @@ class ListingImageVisionGate
             'imageUrls' => $imageUrls,
         ])->render());
 
+        $debugSession = OpenAiDebugArtifactSession::start(
+            'listing-image-vision-gate',
+            ($sourceUrl !== '' ? $sourceUrl : $title).'|'.$title,
+        );
+
         /** @var list<array{type: string, text?: string, image_url?: array<string, mixed>}> $content */
         $content = [['type' => 'text', 'text' => $instructions]];
 
@@ -118,10 +123,17 @@ class ListingImageVisionGate
             'max_completion_tokens' => 4096,
         ];
 
-        Log::info('Listing image vision gate: chat.completions request', [
+        if ($debugSession !== null) {
+            $debugSession->writeText('instructions.txt', $instructions);
+            $debugSession->saveHttpUrlsAsFiles($imageUrls, 'candidate');
+            $debugSession->writeJson('chat-completions-request.json', $payload);
+        }
+
+        Log::debug('Listing image vision gate request', [
             'model' => $payload['model'],
             'image_count' => count($imageUrls),
             'listing_title' => $title,
+            'debug_artifacts_path' => $debugSession?->basePath(),
         ]);
 
         $response = Http::withToken((string) config('openai.api_key'))
@@ -138,6 +150,10 @@ class ListingImageVisionGate
 
         /** @var array<string, mixed> $data */
         $data = $response->json();
+
+        if ($debugSession !== null) {
+            $debugSession->writeJson('chat-completions-response.json', $data);
+        }
 
         $text = data_get($data, 'choices.0.message.content');
         if (! is_string($text) || trim($text) === '') {
@@ -196,6 +212,10 @@ class ListingImageVisionGate
                     'reason' => 'No explicit decision returned; kept by default.',
                 ];
             }
+        }
+
+        if ($debugSession !== null) {
+            $debugSession->writeJson('parsed-decisions.json', ['results' => $normalized]);
         }
 
         return $normalized;

@@ -21,6 +21,14 @@ You extract **individual vehicle/product detail page (VDP) URLs** for a Facebook
 - **Do not** crawl other site sections, run open-ended domain searches, or fabricate URLs not present on that page.
 - **Do not** return category pages or search shells as “listings.”
 
+### When listings are not rendered server-side (JavaScript / SPA)
+
+Many inventory sites ship an empty or minimal shell in HTML and load rows via XHR/Fetch/GraphQL. You cannot run browser DevTools here, but the **same HTTP response** for the URL above often still contains traces of that “network layer”:
+
+- Inline bootstrap JSON: `__NEXT_DATA__`, `window.__INITIAL_STATE__` / `__NUXT__`, `<script type="application/json">`, hydration blobs on the root element, chunk loaders, or embedded API base paths (`/api/`, `/graphql`, `/inventory`, `/vehicles`, dealer platform endpoints).
+- **Strings inside that document** that encode vehicle IDs, stock numbers, VINs, slugs, or relative VDP paths—use them only to recover **full HTTPS detail URLs on this hostname** that the page source plausibly supports (same patterns as real `href`s).
+- If traditional `<a href>` listing links are missing, **prioritize extracting VDP URLs from this embedded JSON and structured fragments** before concluding the page has no inventory links.
+
 Use web_search / open-page only as needed to load **the URL above**. Stay on that hostname. Prefer links that match patterns like the detail examples when the site uses DealerOn or similar dealer platforms.
 
 Return at most {{ $maxListings }} distinct VDP URLs; duplicates are merged server-side.

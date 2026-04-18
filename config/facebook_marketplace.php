@@ -35,6 +35,34 @@ return [
 
     'scraper_timeout_seconds' => (int) env('SCRAPER_TIMEOUT_SECONDS', 45),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Browserless (JS-rendered HTML)
+    |--------------------------------------------------------------------------
+    |
+    | POST /content returns fully rendered HTML. Requires a Browserless token.
+    | Docs: https://docs.browserless.io/rest-apis/content
+    |
+    */
+
+    'browserless' => [
+        'enabled' => filter_var(env('BROWSERLESS_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'token' => env('BROWSERLESS_TOKEN'),
+        /** e.g. https://production-sfo.browserless.io (region-specific) */
+        'base_url' => rtrim((string) env(
+            'BROWSERLESS_BASE_URL',
+            'https://production-sfo.browserless.io',
+        ), '/'),
+        /** Seconds for the Browserless request (navigation + render can exceed plain HTTP). */
+        'timeout_seconds' => max(15, (int) env('BROWSERLESS_TIMEOUT_SECONDS', 90)),
+        /** When true (and token set), listing/index HTML is fetched via Browserless first. */
+        'use_for_scraping' => filter_var(env('BROWSERLESS_USE_FOR_SCRAPING', false), FILTER_VALIDATE_BOOLEAN),
+        /** If Browserless fails or returns empty HTML, fall back to Laravel HTTP GET. */
+        'fallback_to_http' => filter_var(env('BROWSERLESS_FALLBACK_TO_HTTP', true), FILTER_VALIDATE_BOOLEAN),
+        /** Optional extra wait in ms before capturing HTML (SPA hydration). 0 = omit. */
+        'wait_for_timeout_ms' => max(0, (int) env('BROWSERLESS_WAIT_FOR_TIMEOUT_MS', 0)),
+    ],
+
     'max_listings_per_job' => (int) env('MAX_LISTINGS_PER_JOB', 100),
 
     /** Total bytes for all downloaded listing images per export job (approximate cap). */

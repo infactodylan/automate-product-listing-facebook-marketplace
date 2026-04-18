@@ -30,7 +30,7 @@ class MarketplaceExportPackageBuilder
             throw new \RuntimeException('No listings were scraped.');
         }
 
-        Log::info('Listing export package: building', [
+        Log::info('Listing export package build started', [
             'export_id' => $export->id,
             'listing_count' => count($scrapedProducts),
         ]);
@@ -75,7 +75,7 @@ class MarketplaceExportPackageBuilder
             Storage::makeDirectory($packageDir.'/'.$folder);
         }
 
-        Log::info('Listing export package: product folders created', [
+        Log::debug('Listing export package: product folders created', [
             'export_id' => $export->id,
             'folder_count' => count($scrapedProducts),
         ]);
@@ -113,7 +113,7 @@ class MarketplaceExportPackageBuilder
 
             $maxPerListing = (int) config('facebook_marketplace.max_images_per_listing');
             if ($maxPerListing > 0 && count($urls) > $maxPerListing) {
-                Log::info('Listing export package: capping images per listing', [
+                Log::debug('Listing export package: capping images per listing', [
                     'export_id' => $export->id,
                     'product_title' => (string) ($product['title'] ?? ''),
                     'urls_before' => count($urls),
@@ -133,7 +133,7 @@ class MarketplaceExportPackageBuilder
                 $timeoutSeconds = min(60, (int) config('facebook_marketplace.scraper_timeout_seconds'));
                 $poolConcurrency = max(1, (int) config('facebook_marketplace.image_download_concurrency'));
 
-                Log::info('Listing export package: downloading listing images (concurrent pool)', [
+                Log::debug('Listing export package: downloading listing images (concurrent pool)', [
                     'export_id' => $export->id,
                     'product_title' => (string) ($product['title'] ?? ''),
                     'url_count' => count($urlList),
@@ -161,7 +161,7 @@ class MarketplaceExportPackageBuilder
                 $n = 1;
                 foreach ($urlList as $i => $imageUrl) {
                     if ($budgetExhausted) {
-                        Log::info('Listing export package: image skipped (budget)', [
+                        Log::debug('Listing export package: image skipped (budget)', [
                             'export_id' => $export->id,
                             'product_title' => (string) ($product['title'] ?? ''),
                             'image_url' => $imageUrl,
@@ -235,7 +235,7 @@ class MarketplaceExportPackageBuilder
                         $savedBodyHashes[$hash] = true;
                         $imageBytesUsed += $len;
                         $savedCount++;
-                        Log::info('Listing export package: image saved', [
+                        Log::debug('Listing export package: image saved', [
                             'export_id' => $export->id,
                             'product_title' => (string) ($product['title'] ?? ''),
                             'relative_file' => $relativeFile,
@@ -312,7 +312,7 @@ class MarketplaceExportPackageBuilder
 
         $zip->close();
 
-        Log::info('Listing export package: zip ready', [
+        Log::info('Listing export package ready', [
             'export_id' => $export->id,
             'zip_relative_path' => $zipRelative,
             'image_bytes_used' => $imageBytesUsed,

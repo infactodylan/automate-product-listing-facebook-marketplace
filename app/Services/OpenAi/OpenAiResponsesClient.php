@@ -23,9 +23,12 @@ class OpenAiResponsesClient
         callable $executeFunctionCall,
         int $maxRounds,
         ?array $extraPayload = null,
+        ?OpenAiDebugArtifactSession $debugSession = null,
     ): array {
         $currentInput = $input;
         $round = 0;
+
+        $debugSession?->writeResponsesInitialInput($currentInput);
 
         while ($round < $maxRounds) {
             $round++;
@@ -55,6 +58,8 @@ class OpenAiResponsesClient
             /** @var array<string, mixed> $data */
             $data = $response->json();
 
+            $debugSession?->writeResponsesRound($round, $data);
+
             $output = $data['output'] ?? [];
             if (! is_array($output)) {
                 return $data;
@@ -67,7 +72,7 @@ class OpenAiResponsesClient
                 }
             }
 
-            Log::info('OpenAI Responses API request finished', [
+            Log::debug('OpenAI Responses API request finished', [
                 'round' => $round,
                 'model' => $model,
                 'response_id' => $data['id'] ?? null,
@@ -79,7 +84,7 @@ class OpenAiResponsesClient
 
             $functionCalls = self::collectFunctionCalls($output);
             if ($functionCalls === []) {
-                Log::info('OpenAI Responses API idle (no pending function calls)', [
+                Log::debug('OpenAI Responses API idle (no pending function calls)', [
                     'round' => $round,
                     'response_id' => $data['id'] ?? null,
                 ]);
@@ -87,7 +92,7 @@ class OpenAiResponsesClient
                 return $data;
             }
 
-            Log::info('OpenAI Responses API executing function call outputs', [
+            Log::debug('OpenAI Responses API executing function call outputs', [
                 'round' => $round,
                 'call_count' => count($functionCalls),
                 'names' => array_map(fn (array $c) => $c['name'], $functionCalls),

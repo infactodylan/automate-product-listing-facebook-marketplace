@@ -55,10 +55,7 @@ class ListingPageImagesOpenAiDiscoverer
             ]) ?: '{"ok":false}';
         };
 
-        Log::info('OpenAI listing images discoverer: starting Responses run', [
-            'listing_page_url' => $listingPageUrl,
-            'model' => $model,
-        ]);
+        $debugSession = OpenAiDebugArtifactSession::start('listing-detail-images', $listingPageUrl);
 
         $final = $this->client->runUntilIdle(
             $model,
@@ -68,15 +65,22 @@ class ListingPageImagesOpenAiDiscoverer
             $noopExecutor,
             (int) config('openai.max_tool_rounds'),
             $extraPayload,
+            $debugSession,
         );
 
         $urls = OpenAiResponseUrlParser::imageHttpUrls($final);
         $filtered = $this->filterNoise($urls);
 
-        Log::info('OpenAI listing images discoverer: finished', [
+        if ($debugSession !== null) {
+            $debugSession->writeJson('discoverer-urls-raw.json', ['urls' => $urls]);
+            $debugSession->writeJson('discoverer-urls-after-noise-filter.json', ['urls' => $filtered]);
+        }
+
+        Log::debug('OpenAI listing images discoverer complete', [
             'listing_page_url' => $listingPageUrl,
             'urls_from_response' => count($urls),
             'urls_after_noise_filter' => count($filtered),
+            'debug_artifacts_path' => $debugSession?->basePath(),
         ]);
 
         return $filtered;

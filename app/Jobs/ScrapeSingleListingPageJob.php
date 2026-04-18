@@ -41,12 +41,6 @@ class ScrapeSingleListingPageJob implements ShouldQueue
         }
 
         try {
-            Log::info('Listing scrape job: scraping URL', [
-                'export_id' => $this->listingExportId,
-                'listing_url' => $this->listingUrl,
-                'position' => $this->position,
-            ]);
-
             $product = $scraper->scrape($this->listingUrl, $this->listingExportId);
 
             ListingExportScrapeResult::query()->updateOrCreate(
